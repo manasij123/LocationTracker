@@ -546,6 +546,34 @@ h1, h2, h3, h4, p { margin: 0; }
   100% { transform: scale(1.6); opacity: 0; }
 }
 
+.marker-label-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+.marker-label {
+  position: relative;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 8px;
+}
+.marker-label::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--color-primary);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Toasts                                                                  */
 /* ---------------------------------------------------------------------- */

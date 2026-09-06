@@ -5,23 +5,54 @@ interface MapViewProps {
   latitude: number;
   longitude: number;
   placeName?: string;
+  /** Optional caption pinned above the marker, e.g. "ME AT: TCS Gitobitan". */
+  label?: string;
   height?: number | string;
   zoom?: number;
   interactive?: boolean;
   className?: string;
 }
 
-const pulseIcon = L.divIcon({
-  className: "",
-  html: `<div class="pulse-marker"><div class="ring"></div><div class="dot"></div></div>`,
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-});
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const DOT_SIZE = 22;
+const LABEL_ICON_WIDTH = 220;
+const LABEL_ICON_HEIGHT = 54;
+
+function buildMarkerIcon(label?: string): L.DivIcon {
+  if (!label) {
+    return L.divIcon({
+      className: "",
+      html: `<div class="pulse-marker"><div class="ring"></div><div class="dot"></div></div>`,
+      iconSize: [DOT_SIZE, DOT_SIZE],
+      iconAnchor: [DOT_SIZE / 2, DOT_SIZE / 2],
+    });
+  }
+
+  return L.divIcon({
+    className: "",
+    html: `
+      <div class="marker-label-wrap">
+        <div class="marker-label">${escapeHtml(label)}</div>
+        <div class="pulse-marker"><div class="ring"></div><div class="dot"></div></div>
+      </div>
+    `,
+    iconSize: [LABEL_ICON_WIDTH, LABEL_ICON_HEIGHT],
+    iconAnchor: [LABEL_ICON_WIDTH / 2, LABEL_ICON_HEIGHT - DOT_SIZE / 2],
+  });
+}
 
 export default function MapView({
   latitude,
   longitude,
   placeName,
+  label,
   height = 320,
   zoom = 15,
   interactive = true,
@@ -60,7 +91,7 @@ export default function MapView({
       fillOpacity: 0.12,
     }).addTo(map);
 
-    const marker = L.marker([latitude, longitude], { icon: pulseIcon }).addTo(map);
+    const marker = L.marker([latitude, longitude], { icon: buildMarkerIcon(label) }).addTo(map);
     if (placeName) marker.bindPopup(placeName);
 
     mapRef.current = map;
@@ -78,12 +109,13 @@ export default function MapView({
     if (!mapRef.current || !markerRef.current || !circleRef.current) return;
     const latlng: L.LatLngExpression = [latitude, longitude];
     markerRef.current.setLatLng(latlng);
+    markerRef.current.setIcon(buildMarkerIcon(label));
     circleRef.current.setLatLng(latlng);
     if (placeName) markerRef.current.bindPopup(placeName);
     mapRef.current.setView(latlng, zoom, { animate: true });
     // Resize is needed when the container becomes visible after being hidden (e.g. tab switch).
     setTimeout(() => mapRef.current?.invalidateSize(), 80);
-  }, [latitude, longitude, placeName, zoom]);
+  }, [latitude, longitude, placeName, label, zoom]);
 
   return (
     <div

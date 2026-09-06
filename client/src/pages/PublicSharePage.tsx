@@ -82,7 +82,13 @@ export default function PublicSharePage() {
 
         {!loading && share && share.status === "active" && share.latitude != null && share.longitude != null && (
           <>
-            <MapView latitude={share.latitude} longitude={share.longitude} placeName={share.placeName} height={340} />
+            <MapView
+              latitude={share.latitude}
+              longitude={share.longitude}
+              placeName={share.placeName}
+              label={`ME AT: ${share.placeName}`}
+              height={340}
+            />
 
             <div className="card card-pad mt-16">
               <div style={{ fontWeight: 800, fontSize: 17 }}>📍 {share.placeName}</div>
