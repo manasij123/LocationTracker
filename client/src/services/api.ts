@@ -6,10 +6,15 @@ export class ApiRequestError extends Error {
   }
 }
 
+// Empty by default: same-origin deploys (or the Vite dev proxy) just use relative "/api/...".
+// Set VITE_API_BASE_URL (e.g. "https://spotshare-api.onrender.com") when the frontend and
+// backend are hosted on different domains.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE_URL}/api${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
