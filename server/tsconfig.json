@@ -16,5 +16,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["src", "prisma"]
+  "include": ["src"],
+  "exclude": ["src/__tests__"]
 }
