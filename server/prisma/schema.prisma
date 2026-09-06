@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ShareStatus {
+  active
+  expired
+  revoked
+}
+
+enum ActivityType {
+  share_created
+  link_opened
+  share_expired
+  share_revoked
+}
+
+enum DeviceType {
+  android
+  ios
+  desktop
+  other
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  shares         Share[]
+  activityEvents ActivityEvent[]
+}
+
+model Share {
+  id              String      @id @default(cuid())
+  publicToken     String      @unique
+  placeName       String
+  formattedAddress String
+  latitude        Float
+  longitude       Float
+  providerPlaceId String?
+  note            String?
+  status          ShareStatus @default(active)
+  createdAt       DateTime    @default(now())
+  expiresAt       DateTime
+  revokedAt       DateTime?
+
+  createdBy String
+  creator   User   @relation(fields: [createdBy], references: [id])
+
+  opens          ShareOpen[]
+  activityEvents ActivityEvent[]
+
+  @@index([publicToken])
+  @@index([createdBy])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model ShareOpen {
+  id                String     @id @default(cuid())
+  shareId           String
+  share             Share      @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  openedAt          DateTime   @default(now())
+  visitorHash       String
+  deviceType        DeviceType @default(other)
+  userAgentCategory String?
+
+  @@index([shareId])
+  @@index([openedAt])
+}
+
+model ActivityEvent {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  shareId   String?
+  share     Share?       @relation(fields: [shareId], references: [id], onDelete: SetNull)
+  type      ActivityType
+  createdAt DateTime     @default(now())
+  metadata  Json?
+
+  @@index([userId])
+  @@index([shareId])
+  @@index([createdAt])
+}
+
+model Place {
+  id              String @id @default(cuid())
+  providerPlaceId String @unique
+  name            String
+  formattedAddress String
+  latitude        Float
+  longitude       Float
+  createdAt       DateTime @default(now())
+}
