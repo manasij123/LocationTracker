@@ -2,10 +2,8 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import { useTheme } from "../hooks/useTheme";
 
-const LIGHT_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const DARK_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-const CARTO_ATTRIBUTION = `${OSM_ATTRIBUTION} &copy; <a href="https://carto.com/attributions">CARTO</a>`;
 
 interface MapViewProps {
   latitude: number;
@@ -69,7 +67,6 @@ export default function MapView({
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const circleRef = useRef<L.Circle | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -85,6 +82,12 @@ export default function MapView({
       boxZoom: interactive,
       keyboard: interactive,
     });
+
+    L.tileLayer(TILE_URL, {
+      attribution: OSM_ATTRIBUTION,
+      maxZoom: 19,
+      detectRetina: true,
+    }).addTo(map);
 
     const circle = L.circle([latitude, longitude], {
       radius: 90,
@@ -109,26 +112,6 @@ export default function MapView({
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-    const isDark = resolvedTheme === "dark";
-
-    const nextLayer = L.tileLayer(isDark ? DARK_TILE_URL : LIGHT_TILE_URL, {
-      attribution: isDark ? CARTO_ATTRIBUTION : OSM_ATTRIBUTION,
-      maxZoom: 19,
-      subdomains: isDark ? "abcd" : "abc",
-      detectRetina: true,
-    });
-
-    nextLayer.addTo(map);
-    nextLayer.bringToBack();
-
-    const previousLayer = tileLayerRef.current;
-    tileLayerRef.current = nextLayer;
-    if (previousLayer) map.removeLayer(previousLayer);
-  }, [resolvedTheme]);
-
-  useEffect(() => {
     if (!mapRef.current || !markerRef.current || !circleRef.current) return;
     const latlng: L.LatLngExpression = [latitude, longitude];
     markerRef.current.setLatLng(latlng);
@@ -142,7 +125,7 @@ export default function MapView({
 
   return (
     <div
-      className={`map-container ${className}`}
+      className={`map-container ${resolvedTheme === "dark" ? "map-dark" : ""} ${className}`}
       style={{ height }}
     >
       <div ref={containerRef} className="map-surface" />
