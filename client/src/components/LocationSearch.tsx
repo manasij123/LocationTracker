@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useDebounce } from "../hooks/useDebounce";
+import { useUserLocation } from "../hooks/useUserLocation";
 import { searchLocations } from "../services/locations";
 import { ApiRequestError } from "../services/api";
+import { distanceKm, formatDistance } from "../utils/geo";
 import type { PlaceResult } from "../types";
 
 interface LocationSearchProps {
@@ -17,6 +19,14 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
   const debouncedQuery = useDebounce(query, 400);
   const requestId = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const { coords: userCoords, request: requestUserLocation } = useUserLocation();
+
+  useEffect(() => {
+    // Ask once, up front, so distances are ready by the time the first results show.
+    // Declining the browser prompt just means results render without a distance.
+    requestUserLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -102,9 +112,9 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
                 }}
                 style={{
                   display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  gap: 2,
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
                   width: "100%",
                   padding: "12px 16px",
                   border: "none",
@@ -114,8 +124,24 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
                   textAlign: "left",
                 }}
               >
-                <span style={{ fontWeight: 700, fontSize: 14 }}>📍 {place.name}</span>
-                <span className="text-muted" style={{ fontSize: 12.5 }}>{place.formattedAddress}</span>
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📍 {place.name}
+                  </span>
+                  <span
+                    className="text-muted"
+                    style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {place.formattedAddress}
+                  </span>
+                </span>
+                {userCoords && (
+                  <span className="text-faint" style={{ fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                    {formatDistance(
+                      distanceKm(userCoords.latitude, userCoords.longitude, place.latitude, place.longitude)
+                    )}
+                  </span>
+                )}
               </button>
             ))}
         </div>
