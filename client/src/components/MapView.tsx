@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme } from "../hooks/useTheme";
 import { loadGoogleMaps } from "../utils/googleMapsLoader";
 import { GOOGLE_MAPS_DARK_STYLE } from "../utils/googleMapDarkStyle";
+import { distanceKm } from "../utils/geo";
+
+const ROUTE_COLOR = "#ef4444";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const MOVE_ANIMATION_MS = 1800;
@@ -126,6 +129,8 @@ export default function MapView({
   const circleRef = useRef<google.maps.Circle | null>(null);
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+  const routePolylineRef = useRef<google.maps.Polyline | null>(null);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -179,6 +184,7 @@ export default function MapView({
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       overlayRef.current?.setMap(null);
       circleRef.current?.setMap(null);
+      routePolylineRef.current?.setMap(null);
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,7 +195,8 @@ export default function MapView({
     mapRef.current?.setOptions({ styles: resolvedTheme === "dark" ? GOOGLE_MAPS_DARK_STYLE : [] });
   }, [resolvedTheme, ready]);
 
-  // Move the marker/circle/camera to a new position — gliding smoothly if this isn't the first render.
+  // Move the marker/circle/camera to a new position — gliding smoothly along the actual road
+  // route (not a straight line) if this isn't the first render.
   useEffect(() => {
     if (!ready || !mapRef.current || !overlayRef.current || !circleRef.current) return;
     const map = mapRef.current;
@@ -207,20 +214,65 @@ export default function MapView({
       animationFrameRef.current = null;
     }
 
+    // Clear the previous move's route trail before starting a new one.
+    routePolylineRef.current?.setMap(null);
+    routePolylineRef.current = null;
+
     if (!from || (from.lat === to.lat && from.lng === to.lng)) {
       overlay.setPosition(to);
       circle.setCenter(to);
       map.setCenter(to);
       map.setZoom(zoom);
-    } else {
-      // One continuous motion: marker, circle and camera all glide together, in lockstep.
+      return;
+    }
+
+    function glideAlong(path: google.maps.LatLngLiteral[]) {
+      // Constant-speed interpolation along a multi-point path, using cumulative
+      // great-circle distance so the marker doesn't speed up/slow down between segments.
+      const cumulative = [0];
+      for (let i = 1; i < path.length; i++) {
+        cumulative.push(cumulative[i - 1] + distanceKm(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng));
+      }
+      const total = cumulative[cumulative.length - 1] || 1;
+
+      function pointAt(fraction: number): google.maps.LatLngLiteral {
+        const target = fraction * total;
+        let i = 1;
+        while (i < cumulative.length - 1 && cumulative[i] < target) i++;
+        const segFrom = path[i - 1];
+        const segTo = path[i];
+        const segLen = cumulative[i] - cumulative[i - 1];
+        const segFraction = segLen > 0 ? (target - cumulative[i - 1]) / segLen : 0;
+        return {
+          lat: segFrom.lat + (segTo.lat - segFrom.lat) * segFraction,
+          lng: segFrom.lng + (segTo.lng - segFrom.lng) * segFraction,
+        };
+      }
+
+      const startTime = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - startTime) / MOVE_ANIMATION_MS);
+        const point = pointAt(easeInOutQuad(t));
+        overlay.setPosition(point);
+        circle.setCenter(point);
+        map.setCenter(point);
+        if (t < 1) {
+          animationFrameRef.current = requestAnimationFrame(tick);
+        } else {
+          animationFrameRef.current = null;
+        }
+      };
+      animationFrameRef.current = requestAnimationFrame(tick);
+    }
+
+    function glideStraightLine(origin: google.maps.LatLngLiteral) {
       const startTime = performance.now();
       const tick = (now: number) => {
         const t = Math.min(1, (now - startTime) / MOVE_ANIMATION_MS);
         const eased = easeInOutQuad(t);
         const point = {
-          lat: from.lat + (to.lat - from.lat) * eased,
-          lng: from.lng + (to.lng - from.lng) * eased,
+          lat: origin.lat + (to.lat - origin.lat) * eased,
+          lng: origin.lng + (to.lng - origin.lng) * eased,
         };
         overlay.setPosition(point);
         circle.setCenter(point);
@@ -233,6 +285,37 @@ export default function MapView({
       };
       animationFrameRef.current = requestAnimationFrame(tick);
     }
+
+    if (!directionsServiceRef.current) {
+      directionsServiceRef.current = new google.maps.DirectionsService();
+    }
+
+    let cancelled = false;
+    directionsServiceRef.current.route(
+      { origin: from, destination: to, travelMode: google.maps.TravelMode.DRIVING },
+      (result, status) => {
+        if (cancelled) return;
+        if (status === google.maps.DirectionsStatus.OK && result?.routes[0]) {
+          const path = result.routes[0].overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
+          routePolylineRef.current = new google.maps.Polyline({
+            path,
+            strokeColor: ROUTE_COLOR,
+            strokeWeight: 4,
+            strokeOpacity: 0.85,
+            map,
+          });
+          glideAlong(path);
+        } else {
+          // No road route available (or Directions API not reachable) — fall back to the
+          // previous straight-line glide so the marker still moves.
+          glideStraightLine(from);
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
   }, [latitude, longitude, label, zoom, ready]);
 
   // Fullscreen toggle: lock body scroll and force Google Maps to re-measure its container.

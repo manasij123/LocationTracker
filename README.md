@@ -83,6 +83,14 @@ bundle by design, so the referrer restriction is what keeps it from being
 usable elsewhere. Without this key the map area shows a "couldn't load the
 map" placeholder; everything else in the app still works.
 
+When a creator updates an active share's location (same link, new spot),
+the map glides the marker along the actual road route between the old and
+new point (drawn as a red line) instead of a straight line, using the
+Directions API. This needs **Directions API** enabled for the same Google
+Cloud project and added to that browser key's API restrictions list
+alongside Maps JavaScript API — without it, the marker still moves (falls
+back to a straight-line glide), just without the road-following path.
+
 ## Deploying (hosting) SpotShare
 
 There are three pieces to put somewhere: a **Postgres database**, the
