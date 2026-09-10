@@ -401,6 +401,7 @@ export default function MapView({
   const flowStopAtRef = useRef(0);
   const liveSegmentPolylineRef = useRef<google.maps.Polyline | null>(null);
   const liveSegmentActiveRef = useRef(false);
+  const userInteractingRef = useRef(false);
   const pendingResumeElapsedMsRef = useRef<number | null>(null);
 
   // Load the SDK and create the map once.
@@ -438,6 +439,18 @@ export default function MapView({
           fullscreenControl: false,
           streetViewControl: false,
           mapTypeControl: false,
+        });
+
+        // While the camera is auto-following the marker during a glide, don't fight a user who
+        // is actively panning/zooming the map themselves — 'dragstart' only fires for a real
+        // drag gesture, and since nothing in this component calls setZoom except the initial
+        // snap (reset away before any glide begins), 'zoom_changed' here only means the user
+        // pinched or scrolled to zoom.
+        map.addListener("dragstart", () => {
+          userInteractingRef.current = true;
+        });
+        map.addListener("zoom_changed", () => {
+          userInteractingRef.current = true;
         });
 
         const circle = new google.maps.Circle({
@@ -506,6 +519,10 @@ export default function MapView({
     const resumeElapsedMs = pendingResumeElapsedMsRef.current;
     pendingResumeElapsedMsRef.current = null;
 
+    // Reset per transition: give the camera a fresh chance to auto-follow this specific move,
+    // regardless of whether the user panned/zoomed during an earlier one.
+    userInteractingRef.current = false;
+
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -558,7 +575,10 @@ export default function MapView({
         const point = covered[covered.length - 1];
         overlay.setPosition(point);
         circle.setCenter(point);
-        map.setCenter(point);
+        // Keep following the marker only while the user isn't actively panning/zooming
+        // themselves — recentering every frame regardless made the map feel stuck/unresponsive
+        // to touch and scroll gestures during a glide.
+        if (!userInteractingRef.current) map.setCenter(point);
         liveLine.setPath(covered);
         if (t < 1) {
           animationFrameRef.current = requestAnimationFrame(tick);
@@ -596,7 +616,10 @@ export default function MapView({
         const point = pointAtFraction(fraction);
         overlay.setPosition(point);
         circle.setCenter(point);
-        map.setCenter(point);
+        // Keep following the marker only while the user isn't actively panning/zooming
+        // themselves — recentering every frame regardless made the map feel stuck/unresponsive
+        // to touch and scroll gestures during a glide.
+        if (!userInteractingRef.current) map.setCenter(point);
         liveLine.setPath([origin, point]);
         if (t < 1) {
           animationFrameRef.current = requestAnimationFrame(tick);
