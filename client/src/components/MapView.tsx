@@ -128,14 +128,11 @@ function fetchRouteTimeline(
   });
 }
 
-/** Maps how long a trip realistically takes to how long its on-screen animation should play —
- *  compressed so a 30-minute cross-town trip doesn't mean a literal 30-minute wait, but still
- *  scaled so longer real trips visibly take longer to watch than shorter ones (diminishing
- *  returns via sqrt, so the gap between "1 min" and "5 min" reads clearly, while "10 min" and
- *  "30 min" don't force an impractically long animation). */
+/** Plays back at the real, estimated pace — a 7-minute walk's glide takes 7 real minutes and
+ *  arrives exactly on that mark, matching what Google Maps' own "how long will this take"
+ *  estimate says, rather than a compressed preview. */
 function playbackDurationMs(totalDurationSeconds: number): number {
-  const scaled = 2000 + Math.sqrt(totalDurationSeconds) * 300;
-  return Math.min(18000, Math.max(2200, scaled));
+  return Math.max(500, totalDurationSeconds * 1000);
 }
 
 /** A point a given fraction of the way along a path, by cumulative great-circle distance
@@ -414,15 +411,15 @@ export default function MapView({
       return;
     }
 
-    // Glides at a pace that reflects how long the trip would realistically take (walking,
-    // then a train, then walking again — whatever the route actually involves), not a fixed
-    // duration regardless of distance or mode.
+    // Glides at the real, estimated pace of the trip (walking, then a train, then walking
+    // again — whatever the route actually involves) — linear against elapsed real time, no
+    // easing, so it arrives exactly on the real duration mark rather than an approximation.
     function glideAlongTimeline(steps: RouteStep[], totalDurationSeconds: number) {
       const playbackMs = playbackDurationMs(totalDurationSeconds);
       const startTime = performance.now();
       const tick = (now: number) => {
         const t = Math.min(1, (now - startTime) / playbackMs);
-        const elapsedSeconds = easeInOutQuad(t) * totalDurationSeconds;
+        const elapsedSeconds = t * totalDurationSeconds;
         const point = pointAtElapsedSeconds(steps, elapsedSeconds);
         overlay.setPosition(point);
         circle.setCenter(point);
