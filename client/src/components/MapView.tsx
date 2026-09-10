@@ -135,27 +135,34 @@ function playbackDurationMs(totalDurationSeconds: number): number {
   return Math.max(500, totalDurationSeconds * 1000);
 }
 
-/** A point a given fraction of the way along a path, by cumulative great-circle distance
- *  (so speed is constant across a path's own points, which approximates real motion well
- *  within a single step of a trip). */
-function pointAlongPath(path: google.maps.LatLngLiteral[], fraction: number): google.maps.LatLngLiteral {
-  if (path.length === 1) return path[0];
+/** The portion of a path from its start up to a given fraction of its length, by cumulative
+ *  great-circle distance (so speed is constant across a path's own points, which approximates
+ *  real motion well within a single step of a trip) — the last point is the exact interpolated
+ *  position at that fraction. Used both to find "where is it right now" (last element) and to
+ *  draw the trail already covered (the whole returned array). */
+function pathUpToFraction(path: google.maps.LatLngLiteral[], fraction: number): google.maps.LatLngLiteral[] {
+  if (path.length === 1) return [path[0]];
   const cumulative = [0];
   for (let i = 1; i < path.length; i++) {
     cumulative.push(cumulative[i - 1] + distanceKm(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng));
   }
   const total = cumulative[cumulative.length - 1] || 1;
   const target = Math.min(1, Math.max(0, fraction)) * total;
+  const covered: google.maps.LatLngLiteral[] = [path[0]];
   let i = 1;
-  while (i < cumulative.length - 1 && cumulative[i] < target) i++;
+  while (i < cumulative.length - 1 && cumulative[i] < target) {
+    covered.push(path[i]);
+    i++;
+  }
   const segFrom = path[i - 1];
   const segTo = path[i];
   const segLen = cumulative[i] - cumulative[i - 1];
   const segFraction = segLen > 0 ? (target - cumulative[i - 1]) / segLen : 0;
-  return {
+  covered.push({
     lat: segFrom.lat + (segTo.lat - segFrom.lat) * segFraction,
     lng: segFrom.lng + (segTo.lng - segFrom.lng) * segFraction,
-  };
+  });
+  return covered;
 }
 
 /** The marker's position at a given point in *real* elapsed trip time — finds which step that
@@ -164,17 +171,28 @@ function pointAlongPath(path: google.maps.LatLngLiteral[], fraction: number): go
  *  real duration (a train ride) visibly moves faster than one covering little ground over a
  *  long duration (a walk), because both are being played back at the same time-compression. */
 function pointAtElapsedSeconds(steps: RouteStep[], elapsedSeconds: number): google.maps.LatLngLiteral {
+  const covered = coveredPathUpTo(steps, elapsedSeconds);
+  return covered[covered.length - 1];
+}
+
+/** Every point of the route already "traveled" by a given elapsed time — every fully-completed
+ *  step's whole path, plus the partial distance into whichever step is current. Feeding this
+ *  into a polyline every frame makes the route line grow behind the marker as it moves, instead
+ *  of the whole line appearing before the marker has gone anywhere. */
+function coveredPathUpTo(steps: RouteStep[], elapsedSeconds: number): google.maps.LatLngLiteral[] {
+  const result: google.maps.LatLngLiteral[] = [];
   let acc = 0;
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (elapsedSeconds <= acc + step.durationSeconds || i === steps.length - 1) {
       const localFraction = step.durationSeconds > 0 ? (elapsedSeconds - acc) / step.durationSeconds : 1;
-      return pointAlongPath(step.path, localFraction);
+      result.push(...pathUpToFraction(step.path, localFraction));
+      return result;
     }
+    result.push(...step.path);
     acc += step.durationSeconds;
   }
-  const lastPath = steps[steps.length - 1].path;
-  return lastPath[lastPath.length - 1];
+  return result;
 }
 
 /** Rescales every step's duration proportionally so the timeline's total matches a
@@ -333,6 +351,8 @@ export default function MapView({
   const flowAnimationFrameRef = useRef<number | null>(null);
   const activeFlowPolylineRef = useRef<google.maps.Polyline | null>(null);
   const flowStopAtRef = useRef(0);
+  const liveSegmentPolylineRef = useRef<google.maps.Polyline | null>(null);
+  const liveSegmentActiveRef = useRef(false);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -390,6 +410,8 @@ export default function MapView({
       historyMarkersRef.current = [];
       historyPolylinesRef.current.forEach((p) => p.setMap(null));
       historyPolylinesRef.current = [];
+      liveSegmentPolylineRef.current?.setMap(null);
+      liveSegmentPolylineRef.current = null;
       if (flowAnimationFrameRef.current) cancelAnimationFrame(flowAnimationFrameRef.current);
       activeFlowPolylineRef.current = null;
       mapRef.current = null;
@@ -421,7 +443,14 @@ export default function MapView({
       animationFrameRef.current = null;
     }
 
+    // Clear whatever live-trail line the previous transition left behind — by the time a new
+    // one starts, the history effect below has already redrawn that older segment as a normal
+    // static line, so this would otherwise just sit on top of it as a stale duplicate.
+    liveSegmentPolylineRef.current?.setMap(null);
+    liveSegmentPolylineRef.current = null;
+
     if (!from || (from.lat === to.lat && from.lng === to.lng)) {
+      liveSegmentActiveRef.current = false;
       overlay.setPosition(to);
       circle.setCenter(to);
       map.setCenter(to);
@@ -429,29 +458,58 @@ export default function MapView({
       return;
     }
 
+    liveSegmentActiveRef.current = true;
+
     // Glides at the real, estimated pace of the trip (walking, then a train, then walking
     // again — whatever the route actually involves) — linear against elapsed real time, no
     // easing, so it arrives exactly on the real duration mark rather than an approximation.
+    // The route line is drawn here too, growing behind the marker as it moves rather than
+    // appearing all at once before anything has actually moved.
     function glideAlongTimeline(steps: RouteStep[], totalDurationSeconds: number) {
+      const liveLine = new google.maps.Polyline({
+        path: [steps[0].path[0]],
+        strokeColor: ROUTE_COLOR,
+        strokeWeight: 4,
+        strokeOpacity: 0.85,
+        icons: buildFlowingRouteIcons(),
+        map,
+      });
+      liveSegmentPolylineRef.current = liveLine;
+      startFlowAnimation(liveLine);
+
       const playbackMs = playbackDurationMs(totalDurationSeconds);
       const startTime = performance.now();
       const tick = (now: number) => {
         const t = Math.min(1, (now - startTime) / playbackMs);
         const elapsedSeconds = t * totalDurationSeconds;
-        const point = pointAtElapsedSeconds(steps, elapsedSeconds);
+        const covered = coveredPathUpTo(steps, elapsedSeconds);
+        const point = covered[covered.length - 1];
         overlay.setPosition(point);
         circle.setCenter(point);
         map.setCenter(point);
+        liveLine.setPath(covered);
         if (t < 1) {
           animationFrameRef.current = requestAnimationFrame(tick);
         } else {
           animationFrameRef.current = null;
+          liveSegmentActiveRef.current = false;
         }
       };
       animationFrameRef.current = requestAnimationFrame(tick);
     }
 
     function glideStraightLine(origin: google.maps.LatLngLiteral, durationMs: number) {
+      const liveLine = new google.maps.Polyline({
+        path: [origin],
+        strokeColor: ROUTE_COLOR,
+        strokeWeight: 4,
+        strokeOpacity: 0.85,
+        icons: buildFlowingRouteIcons(),
+        map,
+      });
+      liveSegmentPolylineRef.current = liveLine;
+      startFlowAnimation(liveLine);
+
       const startTime = performance.now();
       const tick = (now: number) => {
         const t = Math.min(1, (now - startTime) / durationMs);
@@ -463,10 +521,12 @@ export default function MapView({
         overlay.setPosition(point);
         circle.setCenter(point);
         map.setCenter(point);
+        liveLine.setPath([origin, point]);
         if (t < 1) {
           animationFrameRef.current = requestAnimationFrame(tick);
         } else {
           animationFrameRef.current = null;
+          liveSegmentActiveRef.current = false;
         }
       };
       animationFrameRef.current = requestAnimationFrame(tick);
@@ -479,9 +539,6 @@ export default function MapView({
     let cancelled = false;
     fetchRouteTimeline(directionsServiceRef.current, from, to).then((timeline) => {
       if (cancelled) return;
-      // The route line itself (with its flowing-arrow animation) is drawn by the history
-      // effect below, which owns every segment including this latest one — this effect only
-      // needs the timeline to animate the marker along at a realistic pace.
       if (timeline) {
         const finalTimeline = overrideDurationSeconds ? applyDurationOverride(timeline, overrideDurationSeconds) : timeline;
         glideAlongTimeline(finalTimeline.steps, finalTimeline.totalDurationSeconds);
@@ -531,16 +588,17 @@ export default function MapView({
     }
     const service = directionsServiceRef.current;
 
-    // Only the most recent segment (the last history point to wherever the share is now, or
-    // the only segment if there's just one past point) gets the flowing-arrow animation, and
-    // only briefly — every older segment is a plain, static line.
+    // The most recent segment (the last history point to wherever the share is now) is only
+    // drawn here as a plain static line when nothing is actively animating it — while a live
+    // transition is in progress, the move effect above owns that segment's line, growing it
+    // behind the marker instead of showing the whole thing immediately.
     const lastSegmentIndex = chain.length - 1;
 
     let cancelled = false;
     for (let i = 1; i < chain.length; i++) {
+      if (i === lastSegmentIndex && liveSegmentActiveRef.current) continue;
       const origin = chain[i - 1];
       const destination = chain[i];
-      const isLastSegment = i === lastSegmentIndex;
       fetchRouteTimeline(service, origin, destination).then((timeline) => {
         if (cancelled) return;
         const polyline = new google.maps.Polyline({
@@ -548,11 +606,9 @@ export default function MapView({
           strokeColor: ROUTE_COLOR,
           strokeWeight: 4,
           strokeOpacity: 0.75,
-          icons: isLastSegment ? buildFlowingRouteIcons() : undefined,
           map,
         });
         historyPolylinesRef.current.push(polyline);
-        if (isLastSegment) startFlowAnimation(polyline);
       });
     }
 
