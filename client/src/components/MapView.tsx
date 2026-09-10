@@ -5,7 +5,6 @@ import { GOOGLE_MAPS_DARK_STYLE } from "../utils/googleMapDarkStyle";
 import { distanceKm } from "../utils/geo";
 
 const ROUTE_COLOR = "#ef4444";
-const HISTORY_LINE_COLOR = "#94a3b8";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const MOVE_ANIMATION_MS = 1800;
@@ -337,9 +336,9 @@ export default function MapView({
   }, [latitude, longitude, label, zoom, ready]);
 
   // Render the share's past points (server-persisted, so this survives reloads) as numbered
-  // pins with muted straight connector lines — a lightweight, always-correct trail. The live
-  // glide effect above still draws its own bold curvy route for whichever transition is
-  // actually happening in front of the viewer right now.
+  // pins, each consecutive pair connected by the same bold, road-following route the live
+  // glide animation draws — so the whole journey looks the same whether you're watching an
+  // update happen live or opening the link fresh after several updates already happened.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
@@ -360,19 +359,41 @@ export default function MapView({
     );
 
     historyPolylinesRef.current.forEach((p) => p.setMap(null));
-    const chain = [...history.map((h) => ({ lat: h.latitude, lng: h.longitude })), { lat: latitude, lng: longitude }];
     historyPolylinesRef.current = [];
-    for (let i = 1; i < chain.length; i++) {
-      historyPolylinesRef.current.push(
-        new google.maps.Polyline({
-          path: [chain[i - 1], chain[i]],
-          strokeColor: HISTORY_LINE_COLOR,
-          strokeWeight: 3,
-          strokeOpacity: 0.7,
-          map,
-        })
-      );
+
+    const chain = [...history.map((h) => ({ lat: h.latitude, lng: h.longitude })), { lat: latitude, lng: longitude }];
+    if (chain.length < 2) return;
+
+    if (!directionsServiceRef.current) {
+      directionsServiceRef.current = new google.maps.DirectionsService();
     }
+    const service = directionsServiceRef.current;
+
+    let cancelled = false;
+    for (let i = 1; i < chain.length; i++) {
+      const origin = chain[i - 1];
+      const destination = chain[i];
+      service.route({ origin, destination, travelMode: google.maps.TravelMode.DRIVING }, (result, status) => {
+        if (cancelled) return;
+        const path =
+          status === google.maps.DirectionsStatus.OK && result?.routes[0]
+            ? result.routes[0].overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }))
+            : [origin, destination]; // no road route available — draw a straight fallback segment
+        historyPolylinesRef.current.push(
+          new google.maps.Polyline({
+            path,
+            strokeColor: ROUTE_COLOR,
+            strokeWeight: 4,
+            strokeOpacity: 0.85,
+            map,
+          })
+        );
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [ready, history, latitude, longitude]);
 
   // Fullscreen toggle: lock body scroll and force Google Maps to re-measure its container.
