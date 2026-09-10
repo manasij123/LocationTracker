@@ -154,6 +154,7 @@ export async function updateLocation(req: Request, res: Response) {
       formattedAddress: share.formattedAddress,
       latitude: share.latitude,
       longitude: share.longitude,
+      travelDurationSeconds: data.travelDurationSeconds ?? null,
     },
   });
 
@@ -302,6 +303,7 @@ type LocationHistoryRow = {
   latitude: number;
   longitude: number;
   createdAt: Date;
+  travelDurationSeconds: number | null;
 };
 
 function historyDto(history: LocationHistoryRow[]) {
@@ -311,6 +313,7 @@ function historyDto(history: LocationHistoryRow[]) {
     latitude: h.latitude,
     longitude: h.longitude,
     updatedAt: h.createdAt,
+    travelDurationSeconds: h.travelDurationSeconds,
   }));
 }
 

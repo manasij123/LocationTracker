@@ -28,6 +28,9 @@ export const updateLocationSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   providerPlaceId: z.string().trim().max(200).optional().nullable(),
+  /** Optional creator-supplied travel time (seconds) for the move to this new location, used
+   *  instead of the auto-estimated Google Maps duration when animating the transition. */
+  travelDurationSeconds: z.number().int().positive().max(24 * 60 * 60).optional(),
 });
 
 export const shareListQuerySchema = z.object({

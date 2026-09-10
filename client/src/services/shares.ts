@@ -39,6 +39,9 @@ export interface UpdateLocationPayload {
   latitude: number;
   longitude: number;
   providerPlaceId?: string | null;
+  /** Optional creator-supplied travel time (seconds) for this move, used instead of the
+   *  auto-estimated Google Maps duration when animating the transition. */
+  travelDurationSeconds?: number;
 }
 
 export function updateShareLocation(shareId: string, payload: UpdateLocationPayload) {

@@ -201,6 +201,28 @@ describe("SpotShare API", () => {
     expect(publicRes.body.share.locationHistory[1].placeName).toBe("Point B");
   });
 
+  it("stores a creator-supplied travel duration override for a location update", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({ placeName: "Origin", formattedAddress: "Origin Addr", latitude: 22.5, longitude: 88.3, durationMinutes: 30 });
+    const shareId = createRes.body.share.id as string;
+
+    await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({
+        placeName: "Destination",
+        formattedAddress: "Destination Addr",
+        latitude: 22.55,
+        longitude: 88.35,
+        travelDurationSeconds: 600,
+      });
+
+    const publicRes = await request(app).get(`/api/shares/${shareId}`);
+    expect(publicRes.body.share.locationHistory).toHaveLength(1);
+    expect(publicRes.body.share.locationHistory[0].placeName).toBe("Origin");
+    expect(publicRes.body.share.locationHistory[0].travelDurationSeconds).toBe(600);
+  });
+
   it("rejects a location update on a revoked share", async () => {
     const createRes = await request(app)
       .post("/api/shares")

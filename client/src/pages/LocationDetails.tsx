@@ -88,6 +88,7 @@ export default function LocationDetails() {
           longitude={share.longitude}
           placeName={share.placeName}
           history={share.locationHistory}
+          overrideDurationSeconds={share.locationHistory?.[share.locationHistory.length - 1]?.travelDurationSeconds ?? null}
           height={280}
         />
       </div>

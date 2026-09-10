@@ -77,6 +77,9 @@ model LocationHistory {
   latitude         Float
   longitude        Float
   createdAt        DateTime @default(now())
+  /// Optional creator-supplied travel time (seconds) for the move away from this point, used
+  /// in place of the auto-estimated Google Maps duration when animating that transition.
+  travelDurationSeconds Int?
 
   @@index([shareId])
   @@index([createdAt])

@@ -116,6 +116,7 @@ export default function PublicSharePage() {
               placeName={share.placeName}
               label={`ME AT: ${share.placeName}`}
               history={share.locationHistory}
+              overrideDurationSeconds={share.locationHistory?.[share.locationHistory.length - 1]?.travelDurationSeconds ?? null}
               allowFullscreen
               height={340}
             />

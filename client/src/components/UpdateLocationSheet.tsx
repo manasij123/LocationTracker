@@ -21,6 +21,7 @@ export default function UpdateLocationSheet({
   onUpdated,
 }: UpdateLocationSheetProps) {
   const [place, setPlace] = useState<PlaceResult | null>(null);
+  const [travelMinutes, setTravelMinutes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +29,7 @@ export default function UpdateLocationSheet({
 
   function handleClose() {
     setPlace(null);
+    setTravelMinutes("");
     setError(null);
     onClose();
   }
@@ -37,15 +39,18 @@ export default function UpdateLocationSheet({
     setSubmitting(true);
     setError(null);
     try {
+      const minutes = parseFloat(travelMinutes);
       const { share } = await updateShareLocation(shareId, {
         placeName: place.name,
         formattedAddress: place.formattedAddress,
         latitude: place.latitude,
         longitude: place.longitude,
         providerPlaceId: place.placeId,
+        travelDurationSeconds: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : undefined,
       });
       onUpdated(share);
       setPlace(null);
+      setTravelMinutes("");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Couldn't update the location.");
     } finally {
@@ -71,6 +76,24 @@ export default function UpdateLocationSheet({
             <MapView latitude={place.latitude} longitude={place.longitude} placeName={place.name} height={200} interactive={false} />
             <div className="mt-8" style={{ fontWeight: 700, fontSize: 14 }}>📍 {place.name}</div>
             <div className="text-muted" style={{ fontSize: 12.5 }}>{place.formattedAddress}</div>
+
+            <label className="mt-16" style={{ display: "block", fontSize: 12.5, fontWeight: 700 }}>
+              Travel time (minutes) — optional
+            </label>
+            <input
+              className="input mt-6"
+              type="number"
+              min={1}
+              step={1}
+              placeholder="Leave blank to estimate automatically"
+              value={travelMinutes}
+              onChange={(e) => setTravelMinutes(e.target.value)}
+            />
+            <p className="text-faint mt-6" style={{ fontSize: 11.5, lineHeight: 1.4 }}>
+              By default the map estimates how long this move would realistically take (walking,
+              train, driving) and glides at that pace. Set a number here to use that exact time
+              instead.
+            </p>
           </div>
         )}
 

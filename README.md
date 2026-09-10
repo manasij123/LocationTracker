@@ -97,11 +97,13 @@ the map glides the marker along the actual route between the old and new
 point — walking + public transit legs when Google has transit coverage
 for that pair of points (so a walk-to-station, train, walk-from-station
 trip visibly changes pace per leg), falling back to the shortest driving
-route otherwise. Playback speed is scaled from the trip's real estimated
-duration (a 2-minute hop animates quickly, a 30-minute cross-town trip
-takes noticeably longer to watch, compressed to stay within a few
-seconds) rather than always taking the same fixed time regardless of
-distance. This needs **Directions API** enabled for the same Google Cloud
+route otherwise. Playback plays out at the trip's real estimated duration
+— a 7-minute walk's glide takes 7 real minutes and arrives exactly on
+that mark, the same number Google Maps itself would show for those two
+points — rather than a fixed time regardless of distance. The creator can
+override this with their own travel time (in minutes) when updating a
+location, which rescales every leg's pace proportionally to match while
+keeping the walk-slower/train-faster shape intact. This needs **Directions API** enabled for the same Google Cloud
 project and added to that browser key's API restrictions list alongside
 Maps JavaScript API (transit and driving are both just travel modes
 within that one API, no separate one to enable) — without it, the marker

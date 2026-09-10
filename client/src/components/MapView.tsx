@@ -177,6 +177,18 @@ function pointAtElapsedSeconds(steps: RouteStep[], elapsedSeconds: number): goog
   return lastPath[lastPath.length - 1];
 }
 
+/** Rescales every step's duration proportionally so the timeline's total matches a
+ *  creator-supplied override, while keeping each step's relative pace (e.g. still slower
+ *  while "walking" than while "on the train") exactly as Google estimated it. */
+function applyDurationOverride(timeline: RouteTimeline, overrideSeconds: number): RouteTimeline {
+  const scale = timeline.totalDurationSeconds > 0 ? overrideSeconds / timeline.totalDurationSeconds : 1;
+  return {
+    ...timeline,
+    steps: timeline.steps.map((s) => ({ ...s, durationSeconds: s.durationSeconds * scale })),
+    totalDurationSeconds: overrideSeconds,
+  };
+}
+
 /** A small arrow symbol repeated along a polyline, animated by sliding its offset — gives the
  *  route trail a "flowing" sense of motion/direction instead of sitting static on the map. */
 function buildFlowingRouteIcons(): google.maps.IconSequence[] {
@@ -264,6 +276,7 @@ interface HistoryPoint {
   latitude: number;
   longitude: number;
   placeName: string;
+  travelDurationSeconds?: number | null;
 }
 
 interface MapViewProps {
@@ -276,6 +289,10 @@ interface MapViewProps {
    *  numbered pins (1, 2, 3, ...) with muted connector lines, so the whole journey stays
    *  visible on every page load, not just during a live transition. */
   history?: HistoryPoint[];
+  /** Creator-supplied travel time (seconds) for the current/live transition — i.e. the move
+   *  that just brought the share to (latitude, longitude) — overriding the auto-estimated
+   *  Google Maps duration for that specific glide. */
+  overrideDurationSeconds?: number | null;
   height?: number | string;
   zoom?: number;
   interactive?: boolean;
@@ -290,6 +307,7 @@ export default function MapView({
   placeName,
   label,
   history = [],
+  overrideDurationSeconds = null,
   height = 320,
   zoom = 15,
   interactive = true,
@@ -433,10 +451,10 @@ export default function MapView({
       animationFrameRef.current = requestAnimationFrame(tick);
     }
 
-    function glideStraightLine(origin: google.maps.LatLngLiteral) {
+    function glideStraightLine(origin: google.maps.LatLngLiteral, durationMs: number) {
       const startTime = performance.now();
       const tick = (now: number) => {
-        const t = Math.min(1, (now - startTime) / MOVE_ANIMATION_MS);
+        const t = Math.min(1, (now - startTime) / durationMs);
         const eased = easeInOutQuad(t);
         const point = {
           lat: origin.lat + (to.lat - origin.lat) * eased,
@@ -465,18 +483,19 @@ export default function MapView({
       // effect below, which owns every segment including this latest one — this effect only
       // needs the timeline to animate the marker along at a realistic pace.
       if (timeline) {
-        glideAlongTimeline(timeline.steps, timeline.totalDurationSeconds);
+        const finalTimeline = overrideDurationSeconds ? applyDurationOverride(timeline, overrideDurationSeconds) : timeline;
+        glideAlongTimeline(finalTimeline.steps, finalTimeline.totalDurationSeconds);
       } else {
-        // No route available at all (Directions API unreachable) — fall back to a fixed-time
-        // straight-line glide so the marker still moves.
-        glideStraightLine(from);
+        // No route available at all (Directions API unreachable) — fall back to a straight-
+        // line glide, honoring a manual override if one was given, or the old fixed time.
+        glideStraightLine(from, overrideDurationSeconds ? overrideDurationSeconds * 1000 : MOVE_ANIMATION_MS);
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [latitude, longitude, label, zoom, ready]);
+  }, [latitude, longitude, label, zoom, ready, overrideDurationSeconds]);
 
   // Render the share's past points (server-persisted, so this survives reloads) as numbered
   // pins, each consecutive pair connected by the same bold, road-following route the live
