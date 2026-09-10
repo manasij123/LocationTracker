@@ -295,6 +295,10 @@ interface HistoryPoint {
   longitude: number;
   placeName: string;
   travelDurationSeconds?: number | null;
+  /** When this point stopped being current (i.e. when the move away from it started) — used
+   *  on mount to detect "the page loaded mid-transition" and resume the glide realistically
+   *  instead of snapping straight to the destination. */
+  updatedAt?: string;
 }
 
 interface MapViewProps {
@@ -353,6 +357,7 @@ export default function MapView({
   const flowStopAtRef = useRef(0);
   const liveSegmentPolylineRef = useRef<google.maps.Polyline | null>(null);
   const liveSegmentActiveRef = useRef(false);
+  const pendingResumeElapsedMsRef = useRef<number | null>(null);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -366,8 +371,22 @@ export default function MapView({
       .then(() => {
         if (cancelled || !containerRef.current || mapRef.current) return;
 
+        // If the page just loaded (or reloaded) mid-transition — the most recent update's real
+        // travel time hasn't elapsed yet — start the marker at that transition's origin instead
+        // of snapping straight to the destination, so the move effect below can resume the
+        // glide from wherever it should realistically be by now, not restart or skip it.
+        let initialPosition = { lat: latitude, lng: longitude };
+        const lastHistoryEntry = history[history.length - 1];
+        if (lastHistoryEntry?.updatedAt) {
+          const elapsedMs = Date.now() - new Date(lastHistoryEntry.updatedAt).getTime();
+          if (elapsedMs >= 0) {
+            initialPosition = { lat: lastHistoryEntry.latitude, lng: lastHistoryEntry.longitude };
+            pendingResumeElapsedMsRef.current = elapsedMs;
+          }
+        }
+
         const map = new google.maps.Map(containerRef.current, {
-          center: { lat: latitude, lng: longitude },
+          center: initialPosition,
           zoom,
           disableDefaultUI: !interactive,
           zoomControl: interactive,
@@ -378,7 +397,7 @@ export default function MapView({
         });
 
         const circle = new google.maps.Circle({
-          center: { lat: latitude, lng: longitude },
+          center: initialPosition,
           radius: 90,
           strokeColor: "#2563eb",
           strokeWeight: 1,
@@ -388,13 +407,13 @@ export default function MapView({
         });
 
         const Overlay = getHtmlOverlayClass();
-        const overlay = new Overlay({ lat: latitude, lng: longitude }, buildMarkerHtml(label));
+        const overlay = new Overlay(initialPosition, buildMarkerHtml(label));
         overlay.setMap(map);
 
         mapRef.current = map;
         circleRef.current = circle;
         overlayRef.current = overlay;
-        lastPositionRef.current = { lat: latitude, lng: longitude };
+        lastPositionRef.current = initialPosition;
         setReady(true);
       })
       .catch(() => {
@@ -438,6 +457,11 @@ export default function MapView({
     const to = { lat: latitude, lng: longitude };
     lastPositionRef.current = to;
 
+    // Only meaningful on the very first run after mount — consumed once so later, genuinely
+    // live updates never mistakenly think they're "resuming" something.
+    const resumeElapsedMs = pendingResumeElapsedMsRef.current;
+    pendingResumeElapsedMsRef.current = null;
+
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -464,10 +488,13 @@ export default function MapView({
     // again — whatever the route actually involves) — linear against elapsed real time, no
     // easing, so it arrives exactly on the real duration mark rather than an approximation.
     // The route line is drawn here too, growing behind the marker as it moves rather than
-    // appearing all at once before anything has actually moved.
-    function glideAlongTimeline(steps: RouteStep[], totalDurationSeconds: number) {
+    // appearing all at once before anything has actually moved. `resumeSeconds` lets a page
+    // load/reload mid-transition pick up from wherever the trip should realistically be by
+    // now, instead of restarting it from the origin or skipping straight to the destination.
+    function glideAlongTimeline(steps: RouteStep[], totalDurationSeconds: number, resumeSeconds: number) {
+      const initialCovered = coveredPathUpTo(steps, resumeSeconds);
       const liveLine = new google.maps.Polyline({
-        path: [steps[0].path[0]],
+        path: initialCovered,
         strokeColor: ROUTE_COLOR,
         strokeWeight: 4,
         strokeOpacity: 0.85,
@@ -477,11 +504,12 @@ export default function MapView({
       liveSegmentPolylineRef.current = liveLine;
       startFlowAnimation(liveLine);
 
-      const playbackMs = playbackDurationMs(totalDurationSeconds);
+      const remainingSeconds = totalDurationSeconds - resumeSeconds;
+      const playbackMs = playbackDurationMs(remainingSeconds);
       const startTime = performance.now();
       const tick = (now: number) => {
         const t = Math.min(1, (now - startTime) / playbackMs);
-        const elapsedSeconds = t * totalDurationSeconds;
+        const elapsedSeconds = resumeSeconds + t * remainingSeconds;
         const covered = coveredPathUpTo(steps, elapsedSeconds);
         const point = covered[covered.length - 1];
         overlay.setPosition(point);
@@ -498,9 +526,16 @@ export default function MapView({
       animationFrameRef.current = requestAnimationFrame(tick);
     }
 
-    function glideStraightLine(origin: google.maps.LatLngLiteral, durationMs: number) {
+    function glideStraightLine(origin: google.maps.LatLngLiteral, totalMs: number, resumeMs: number) {
+      const startFraction = totalMs > 0 ? Math.min(1, resumeMs / totalMs) : 1;
+      const remainingMs = Math.max(0, totalMs - resumeMs);
+      const pointAtFraction = (f: number) => ({
+        lat: origin.lat + (to.lat - origin.lat) * f,
+        lng: origin.lng + (to.lng - origin.lng) * f,
+      });
+
       const liveLine = new google.maps.Polyline({
-        path: [origin],
+        path: [origin, pointAtFraction(startFraction)],
         strokeColor: ROUTE_COLOR,
         strokeWeight: 4,
         strokeOpacity: 0.85,
@@ -512,12 +547,9 @@ export default function MapView({
 
       const startTime = performance.now();
       const tick = (now: number) => {
-        const t = Math.min(1, (now - startTime) / durationMs);
-        const eased = easeInOutQuad(t);
-        const point = {
-          lat: origin.lat + (to.lat - origin.lat) * eased,
-          lng: origin.lng + (to.lng - origin.lng) * eased,
-        };
+        const t = Math.min(1, (now - startTime) / (remainingMs || 1));
+        const fraction = startFraction + t * (1 - startFraction);
+        const point = pointAtFraction(fraction);
         overlay.setPosition(point);
         circle.setCenter(point);
         map.setCenter(point);
@@ -541,11 +573,22 @@ export default function MapView({
       if (cancelled) return;
       if (timeline) {
         const finalTimeline = overrideDurationSeconds ? applyDurationOverride(timeline, overrideDurationSeconds) : timeline;
-        glideAlongTimeline(finalTimeline.steps, finalTimeline.totalDurationSeconds);
+        const resumeSeconds = resumeElapsedMs != null ? resumeElapsedMs / 1000 : 0;
+        if (resumeSeconds >= finalTimeline.totalDurationSeconds) {
+          // The real trip would already be over by now — arrive immediately rather than
+          // re-animating a transition that's realistically long since finished.
+          liveSegmentActiveRef.current = false;
+          overlay.setPosition(to);
+          circle.setCenter(to);
+          map.setCenter(to);
+        } else {
+          glideAlongTimeline(finalTimeline.steps, finalTimeline.totalDurationSeconds, resumeSeconds);
+        }
       } else {
         // No route available at all (Directions API unreachable) — fall back to a straight-
         // line glide, honoring a manual override if one was given, or the old fixed time.
-        glideStraightLine(from, overrideDurationSeconds ? overrideDurationSeconds * 1000 : MOVE_ANIMATION_MS);
+        const totalMs = overrideDurationSeconds ? overrideDurationSeconds * 1000 : MOVE_ANIMATION_MS;
+        glideStraightLine(from, totalMs, resumeElapsedMs ?? 0);
       }
     });
 
