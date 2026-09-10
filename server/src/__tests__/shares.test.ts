@@ -23,6 +23,24 @@ describe("SpotShare API", () => {
     expect(res.status).toBe(400);
   });
 
+  it("reverse-geocodes coordinates to a place", async () => {
+    const res = await request(app)
+      .post("/api/locations/reverse-geocode")
+      .send({ latitude: 22.5744, longitude: 88.4331 });
+    expect(res.status).toBe(200);
+    expect(res.body.result).toHaveProperty("placeId");
+    expect(typeof res.body.result.formattedAddress).toBe("string");
+    expect(res.body.result.latitude).toBeCloseTo(22.5744, 1);
+    expect(res.body.result.longitude).toBeCloseTo(88.4331, 1);
+  });
+
+  it("rejects out-of-range coordinates for reverse geocoding", async () => {
+    const res = await request(app)
+      .post("/api/locations/reverse-geocode")
+      .send({ latitude: 999, longitude: 88.4331 });
+    expect(res.status).toBe(400);
+  });
+
   it("creates a share, retrieves it publicly, tracks an open, then revokes it", async () => {
     const createRes = await request(app)
       .post("/api/shares")

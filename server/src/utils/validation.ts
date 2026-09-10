@@ -4,6 +4,11 @@ export const searchSchema = z.object({
   query: z.string().trim().min(1, "Query is required").max(200),
 });
 
+export const reverseGeocodeSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+
 export const createShareSchema = z.object({
   placeName: z.string().trim().min(1).max(200),
   formattedAddress: z.string().trim().min(1).max(400),

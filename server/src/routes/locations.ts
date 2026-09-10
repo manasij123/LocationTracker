@@ -6,5 +6,6 @@ import * as locationsController from "../controllers/locationsController";
 const router = Router();
 
 router.post("/search", searchLimiter, asyncHandler(locationsController.search));
+router.post("/reverse-geocode", searchLimiter, asyncHandler(locationsController.reverseGeocodeLocation));
 
 export default router;

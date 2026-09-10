@@ -74,6 +74,15 @@ cd server && npm test
   the cost of requiring a billed `GEOCODING_API_KEY` (restricted to Places
   API (New) only, no `Application restrictions` since it's called server-side).
 
+Search also accepts exact coordinates pasted straight in (e.g.
+`22.5744, 88.4331`, the kind of thing you'd copy off Google Maps) — detected
+client-side by a simple regex and sent to `POST /api/locations/reverse-geocode`
+instead of a text search. That endpoint always calls the free OpenStreetMap
+Nominatim *reverse* API, regardless of `MAP_PROVIDER`, since no key is needed
+and the forward-search provider choice is irrelevant once you already have
+exact coordinates; if Nominatim is unreachable it falls back to a generic
+"Pinned location (lat, lng)" label rather than failing outright.
+
 The map itself is rendered client-side with the Google Maps JavaScript API,
 which needs its own separate, browser-restricted key: set
 `VITE_GOOGLE_MAPS_API_KEY` in `client/.env` to a key restricted (in Google

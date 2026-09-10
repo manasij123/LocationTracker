@@ -182,6 +182,72 @@ class GooglePlacesProvider implements GeocodingProvider {
   }
 }
 
+/** Turns coordinates back into a readable place — always via the free Nominatim reverse
+ *  API regardless of MAP_PROVIDER, since none of that needs a paid key and the forward-search
+ *  provider choice doesn't matter here (the input is already exact coordinates). */
+async function nominatimReverseGeocode(latitude: number, longitude: number): Promise<PlaceResult> {
+  const url = new URL("https://nominatim.openstreetmap.org/reverse");
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("lat", String(latitude));
+  url.searchParams.set("lon", String(longitude));
+  url.searchParams.set("addressdetails", "1");
+
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "SpotShare/1.0 (temporary location sharing app)",
+      "Accept-Language": "en",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Reverse geocoding responded with status ${res.status}`);
+  }
+
+  const item = (await res.json()) as {
+    place_id?: number;
+    display_name?: string;
+    lat?: string;
+    lon?: string;
+    name?: string;
+    error?: string;
+  };
+
+  if (!item.display_name) {
+    throw new Error(item.error || "No reverse geocoding result for these coordinates");
+  }
+
+  return {
+    placeId: `osm-${item.place_id}`,
+    name: item.name || item.display_name.split(",")[0],
+    formattedAddress: item.display_name,
+    latitude: item.lat ? parseFloat(item.lat) : latitude,
+    longitude: item.lon ? parseFloat(item.lon) : longitude,
+  };
+}
+
+function pinnedLocationFallback(latitude: number, longitude: number): PlaceResult {
+  const lat = latitude.toFixed(5);
+  const lng = longitude.toFixed(5);
+  return {
+    placeId: `pin-${lat}-${lng}`,
+    name: `Pinned location (${lat}, ${lng})`,
+    formattedAddress: `Custom pinned location — ${lat}, ${lng}`,
+    latitude,
+    longitude,
+  };
+}
+
+export async function reverseGeocode(latitude: number, longitude: number): Promise<PlaceResult> {
+  try {
+    return await nominatimReverseGeocode(latitude, longitude);
+  } catch (err) {
+    // Offline dev, rate limit, or an ocean/remote spot with no address — still hand back
+    // something usable so pasting coordinates never dead-ends.
+    console.warn("Reverse geocoding failed, falling back to a generic pinned-location label:", err);
+    return pinnedLocationFallback(latitude, longitude);
+  }
+}
+
 function buildProvider(): GeocodingProvider {
   const providerName = (process.env.MAP_PROVIDER || "mock").toLowerCase();
   if (providerName === "nominatim") return new NominatimGeocodingProvider();

@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { useDebounce } from "../hooks/useDebounce";
 import { useUserLocation } from "../hooks/useUserLocation";
-import { searchLocations } from "../services/locations";
+import { searchLocations, reverseGeocodeLocation } from "../services/locations";
 import { ApiRequestError } from "../services/api";
 import { distanceKm, formatDistance } from "../utils/geo";
 import type { PlaceResult } from "../types";
 
 interface LocationSearchProps {
   onSelect: (place: PlaceResult) => void;
+}
+
+// Matches "22.5744, 88.4331" (optionally negative, with or without spaces around the comma) —
+// lets someone paste exact coordinates (e.g. copied from Google Maps) straight into search.
+const COORDINATE_PATTERN = /^(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/;
+
+function parseCoordinates(text: string): { latitude: number; longitude: number } | null {
+  const match = text.match(COORDINATE_PATTERN);
+  if (!match) return null;
+  const latitude = parseFloat(match[1]);
+  const longitude = parseFloat(match[2]);
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
 }
 
 export default function LocationSearch({ onSelect }: LocationSearchProps) {
@@ -50,7 +63,12 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
     setLoading(true);
     setError(null);
 
-    searchLocations(trimmed)
+    const coords = parseCoordinates(trimmed);
+    const request = coords
+      ? reverseGeocodeLocation(coords.latitude, coords.longitude).then((res) => ({ results: [res.result] }))
+      : searchLocations(trimmed);
+
+    request
       .then((res) => {
         if (requestId.current !== id) return;
         setResults(res.results);
@@ -72,7 +90,7 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
         <span className="search-icon">🔍</span>
         <input
           className="input"
-          placeholder="Search a place, address or landmark"
+          placeholder="Search a place, address, landmark, or paste coordinates"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
