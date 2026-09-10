@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { useTheme } from "../hooks/useTheme";
 
@@ -15,6 +15,8 @@ interface MapViewProps {
   zoom?: number;
   interactive?: boolean;
   className?: string;
+  /** Shows a button that expands the map to fill the whole screen, like Google Maps. */
+  allowFullscreen?: boolean;
 }
 
 function escapeHtml(text: string): string {
@@ -61,8 +63,10 @@ export default function MapView({
   zoom = 15,
   interactive = true,
   className = "",
+  allowFullscreen = false,
 }: MapViewProps) {
   const { resolvedTheme } = useTheme();
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
@@ -123,12 +127,52 @@ export default function MapView({
     setTimeout(() => mapRef.current?.invalidateSize(), 80);
   }, [latitude, longitude, placeName, label, zoom]);
 
+  useEffect(() => {
+    if (!isFullscreen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsFullscreen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    // The container's size changes instantly, but Leaflet needs a tick to re-measure it.
+    const timer = setTimeout(() => mapRef.current?.invalidateSize(), 60);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
+
   return (
     <div
-      className={`map-container ${resolvedTheme === "dark" ? "map-dark" : ""} ${className}`}
-      style={{ height }}
+      className={`map-container ${resolvedTheme === "dark" ? "map-dark" : ""} ${isFullscreen ? "map-fullscreen" : ""} ${className}`}
+      style={isFullscreen ? undefined : { height }}
     >
       <div ref={containerRef} className="map-surface" />
+      {allowFullscreen && (
+        <button
+          className="map-fullscreen-btn"
+          onClick={() => setIsFullscreen((v) => !v)}
+          aria-label={isFullscreen ? "Exit fullscreen map" : "View map fullscreen"}
+        >
+          {isFullscreen ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+          )}
+        </button>
+      )}
     </div>
   );
 }
