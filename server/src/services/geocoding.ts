@@ -143,9 +143,56 @@ class NominatimGeocodingProvider implements GeocodingProvider {
   }
 }
 
+/** Live provider backed by Google's Places API (New) — Text Search. Requires an API key. */
+class GooglePlacesProvider implements GeocodingProvider {
+  constructor(private apiKey: string) {}
+
+  async search(query: string): Promise<PlaceResult[]> {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": this.apiKey,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
+      },
+      body: JSON.stringify({ textQuery: query, pageSize: 6 }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Google Places API responded with status ${res.status}: ${body}`);
+    }
+
+    const data = (await res.json()) as {
+      places?: Array<{
+        id: string;
+        formattedAddress: string;
+        displayName?: { text: string };
+        location: { latitude: number; longitude: number };
+      }>;
+    };
+
+    return (data.places || []).map((place) => ({
+      placeId: place.id,
+      name: place.displayName?.text || place.formattedAddress.split(",")[0],
+      formattedAddress: place.formattedAddress,
+      latitude: place.location.latitude,
+      longitude: place.location.longitude,
+    }));
+  }
+}
+
 function buildProvider(): GeocodingProvider {
   const providerName = (process.env.MAP_PROVIDER || "mock").toLowerCase();
   if (providerName === "nominatim") return new NominatimGeocodingProvider();
+  if (providerName === "google") {
+    const apiKey = process.env.GEOCODING_API_KEY;
+    if (!apiKey) {
+      console.warn("MAP_PROVIDER=google but GEOCODING_API_KEY is not set — falling back to mock provider.");
+      return new MockGeocodingProvider();
+    }
+    return new GooglePlacesProvider(apiKey);
+  }
   return new MockGeocodingProvider();
 }
 
