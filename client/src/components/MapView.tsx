@@ -5,6 +5,7 @@ import { GOOGLE_MAPS_DARK_STYLE } from "../utils/googleMapDarkStyle";
 import { distanceKm } from "../utils/geo";
 
 const ROUTE_COLOR = "#ef4444";
+const HISTORY_LINE_COLOR = "#94a3b8";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const MOVE_ANIMATION_MS = 1800;
@@ -93,12 +94,22 @@ function getHtmlOverlayClass() {
   return HtmlOverlayClass;
 }
 
+interface HistoryPoint {
+  latitude: number;
+  longitude: number;
+  placeName: string;
+}
+
 interface MapViewProps {
   latitude: number;
   longitude: number;
   placeName?: string;
   /** Optional caption pinned above the marker, e.g. "ME AT: TCS Gitobitan". */
   label?: string;
+  /** Past points this share pointed at before being updated, oldest first — rendered as
+   *  numbered pins (1, 2, 3, ...) with muted connector lines, so the whole journey stays
+   *  visible on every page load, not just during a live transition. */
+  history?: HistoryPoint[];
   height?: number | string;
   zoom?: number;
   interactive?: boolean;
@@ -112,6 +123,7 @@ export default function MapView({
   longitude,
   placeName,
   label,
+  history = [],
   height = 320,
   zoom = 15,
   interactive = true,
@@ -132,6 +144,8 @@ export default function MapView({
   const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const routePolylinesRef = useRef<google.maps.Polyline[]>([]);
   const historyMarkersRef = useRef<google.maps.Marker[]>([]);
+  const historyPolylinesRef = useRef<google.maps.Polyline[]>([]);
+  const lastHistoryKeyRef = useRef<string | null>(null);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -189,6 +203,8 @@ export default function MapView({
       routePolylinesRef.current = [];
       historyMarkersRef.current.forEach((m) => m.setMap(null));
       historyMarkersRef.current = [];
+      historyPolylinesRef.current.forEach((p) => p.setMap(null));
+      historyPolylinesRef.current = [];
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -225,19 +241,6 @@ export default function MapView({
       map.setZoom(zoom);
       return;
     }
-
-    // A real move: pin the spot we're leaving with a numbered marker, so the recipient can
-    // see the share's whole journey (1st location, 2nd, 3rd, ...) as updates come in — this
-    // and every earlier route segment stay on the map rather than being replaced.
-    const sequenceNumber = historyMarkersRef.current.length + 1;
-    historyMarkersRef.current.push(
-      new google.maps.Marker({
-        position: from,
-        map,
-        label: { text: String(sequenceNumber), color: "#ffffff", fontWeight: "700" },
-        title: `Point ${sequenceNumber}: previous location`,
-      })
-    );
 
     function glideAlong(path: google.maps.LatLngLiteral[]) {
       // Constant-speed interpolation along a multi-point path, using cumulative
@@ -332,6 +335,45 @@ export default function MapView({
       cancelled = true;
     };
   }, [latitude, longitude, label, zoom, ready]);
+
+  // Render the share's past points (server-persisted, so this survives reloads) as numbered
+  // pins with muted straight connector lines — a lightweight, always-correct trail. The live
+  // glide effect above still draws its own bold curvy route for whichever transition is
+  // actually happening in front of the viewer right now.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+
+    const key = [...history.map((h) => `${h.latitude},${h.longitude}`), `${latitude},${longitude}`].join("|");
+    if (key === lastHistoryKeyRef.current) return;
+    lastHistoryKeyRef.current = key;
+
+    historyMarkersRef.current.forEach((m) => m.setMap(null));
+    historyMarkersRef.current = history.map(
+      (point, i) =>
+        new google.maps.Marker({
+          position: { lat: point.latitude, lng: point.longitude },
+          map,
+          label: { text: String(i + 1), color: "#ffffff", fontWeight: "700" },
+          title: `Point ${i + 1}: ${point.placeName}`,
+        })
+    );
+
+    historyPolylinesRef.current.forEach((p) => p.setMap(null));
+    const chain = [...history.map((h) => ({ lat: h.latitude, lng: h.longitude })), { lat: latitude, lng: longitude }];
+    historyPolylinesRef.current = [];
+    for (let i = 1; i < chain.length; i++) {
+      historyPolylinesRef.current.push(
+        new google.maps.Polyline({
+          path: [chain[i - 1], chain[i]],
+          strokeColor: HISTORY_LINE_COLOR,
+          strokeWeight: 3,
+          strokeOpacity: 0.7,
+          map,
+        })
+      );
+    }
+  }, [ready, history, latitude, longitude]);
 
   // Fullscreen toggle: lock body scroll and force Google Maps to re-measure its container.
   useEffect(() => {

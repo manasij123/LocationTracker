@@ -94,10 +94,13 @@ export async function listShares(req: Request, res: Response) {
 
 export async function getPublicShare(req: Request, res: Response) {
   const { shareId } = req.params;
-  const share = await prisma.share.findUnique({ where: { publicToken: shareId } });
+  const share = await prisma.share.findUnique({
+    where: { publicToken: shareId },
+    include: { locationHistory: { orderBy: { createdAt: "asc" } } },
+  });
   if (!share) throw new ApiError(404, "This share link is invalid.");
 
-  res.json({ share: publicShareDto(share), serverTime: new Date().toISOString() });
+  res.json({ share: publicShareDto(share, share.locationHistory), serverTime: new Date().toISOString() });
 }
 
 export async function revokeShare(req: Request, res: Response) {
@@ -144,6 +147,16 @@ export async function updateLocation(req: Request, res: Response) {
     throw new ApiError(400, `Can't update location on a share that is ${status}.`);
   }
 
+  await prisma.locationHistory.create({
+    data: {
+      shareId: share.id,
+      placeName: share.placeName,
+      formattedAddress: share.formattedAddress,
+      latitude: share.latitude,
+      longitude: share.longitude,
+    },
+  });
+
   const updated = await prisma.share.update({
     where: { id: share.id },
     data: {
@@ -171,7 +184,10 @@ export async function getAnalytics(req: Request, res: Response) {
   const { shareId } = req.params;
   const userId = await getCurrentUserId();
 
-  const share = await prisma.share.findUnique({ where: { publicToken: shareId } });
+  const share = await prisma.share.findUnique({
+    where: { publicToken: shareId },
+    include: { locationHistory: { orderBy: { createdAt: "asc" } } },
+  });
   if (!share) throw new ApiError(404, "Share not found.");
   if (share.createdBy !== userId) throw new ApiError(403, "You cannot view this analytics.");
 
@@ -197,7 +213,7 @@ export async function getAnalytics(req: Request, res: Response) {
   const dailyBuckets = buildDailyBuckets(opens.map((o) => o.openedAt), 14);
 
   res.json({
-    share: creatorShareDto(share, totalOpens),
+    share: creatorShareDto(share, totalOpens, share.locationHistory),
     totalOpens,
     uniqueVisitors,
     lastOpened,
@@ -280,7 +296,25 @@ type ShareRow = {
   revokedAt: Date | null;
 };
 
-export function creatorShareDto(share: ShareRow, linkOpens: number) {
+type LocationHistoryRow = {
+  placeName: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  createdAt: Date;
+};
+
+function historyDto(history: LocationHistoryRow[]) {
+  return history.map((h) => ({
+    placeName: h.placeName,
+    formattedAddress: h.formattedAddress,
+    latitude: h.latitude,
+    longitude: h.longitude,
+    updatedAt: h.createdAt,
+  }));
+}
+
+export function creatorShareDto(share: ShareRow, linkOpens: number, history?: LocationHistoryRow[]) {
   const status = computeStatus(share as any);
   return {
     id: share.publicToken,
@@ -296,10 +330,11 @@ export function creatorShareDto(share: ShareRow, linkOpens: number) {
     remainingMs: status === "active" ? msRemaining(share as any) : 0,
     linkOpens,
     shareUrl: `/share/${share.publicToken}`,
+    locationHistory: history ? historyDto(history) : [],
   };
 }
 
-export function publicShareDto(share: ShareRow) {
+export function publicShareDto(share: ShareRow, history?: LocationHistoryRow[]) {
   const status = computeStatus(share as any);
   const base = {
     id: share.publicToken,
@@ -317,5 +352,6 @@ export function publicShareDto(share: ShareRow) {
     longitude: share.longitude,
     note: share.note,
     remainingMs: msRemaining(share as any),
+    locationHistory: historyDto(history || []),
   };
 }

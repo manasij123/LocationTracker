@@ -157,6 +157,32 @@ describe("SpotShare API", () => {
     expect(activityRes.body.events.some((e: any) => e.type === "location_updated")).toBe(true);
   });
 
+  it("keeps every past point in locationHistory as a share gets updated repeatedly", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({
+        placeName: "Point A",
+        formattedAddress: "Address A",
+        latitude: 22.5,
+        longitude: 88.3,
+        durationMinutes: 30,
+      });
+    const shareId = createRes.body.share.id as string;
+
+    await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({ placeName: "Point B", formattedAddress: "Address B", latitude: 22.55, longitude: 88.35 });
+    await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({ placeName: "Point C", formattedAddress: "Address C", latitude: 22.6, longitude: 88.4 });
+
+    const publicRes = await request(app).get(`/api/shares/${shareId}`);
+    expect(publicRes.body.share.placeName).toBe("Point C");
+    expect(publicRes.body.share.locationHistory).toHaveLength(2);
+    expect(publicRes.body.share.locationHistory[0].placeName).toBe("Point A");
+    expect(publicRes.body.share.locationHistory[1].placeName).toBe("Point B");
+  });
+
   it("rejects a location update on a revoked share", async () => {
     const createRes = await request(app)
       .post("/api/shares")

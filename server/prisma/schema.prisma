@@ -55,14 +55,31 @@ model Share {
   createdBy String
   creator   User   @relation(fields: [createdBy], references: [id])
 
-  opens          ShareOpen[]
-  activityEvents ActivityEvent[]
+  opens           ShareOpen[]
+  activityEvents  ActivityEvent[]
+  locationHistory LocationHistory[]
 
   @@index([publicToken])
   @@index([createdBy])
   @@index([expiresAt])
   @@index([createdAt])
   @@index([status])
+}
+
+/// One row per past point a share pointed at before an update moved it — lets a recipient
+/// (or the creator) see the whole trail of a share's journey, not just wherever it is now.
+model LocationHistory {
+  id               String   @id @default(cuid())
+  shareId          String
+  share            Share    @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  placeName        String
+  formattedAddress String
+  latitude         Float
+  longitude        Float
+  createdAt        DateTime @default(now())
+
+  @@index([shareId])
+  @@index([createdAt])
 }
 
 model ShareOpen {

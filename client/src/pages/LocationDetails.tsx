@@ -83,7 +83,13 @@ export default function LocationDetails() {
       </div>
 
       <div className="section">
-        <MapView latitude={share.latitude} longitude={share.longitude} placeName={share.placeName} height={280} />
+        <MapView
+          latitude={share.latitude}
+          longitude={share.longitude}
+          placeName={share.placeName}
+          history={share.locationHistory}
+          height={280}
+        />
       </div>
 
       <div className="grid grid-2 section">

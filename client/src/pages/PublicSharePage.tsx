@@ -115,6 +115,7 @@ export default function PublicSharePage() {
               longitude={share.longitude}
               placeName={share.placeName}
               label={`ME AT: ${share.placeName}`}
+              history={share.locationHistory}
               allowFullscreen
               height={340}
             />

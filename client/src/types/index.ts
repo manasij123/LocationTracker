@@ -9,6 +9,14 @@ export interface PlaceResult {
   longitude: number;
 }
 
+export interface LocationHistoryPoint {
+  placeName: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  updatedAt: string;
+}
+
 export interface Share {
   id: string;
   placeName: string;
@@ -23,6 +31,7 @@ export interface Share {
   remainingMs: number;
   linkOpens: number;
   shareUrl: string;
+  locationHistory: LocationHistoryPoint[];
 }
 
 export interface PublicShare {
@@ -35,6 +44,7 @@ export interface PublicShare {
   longitude?: number;
   note?: string | null;
   remainingMs?: number;
+  locationHistory?: LocationHistoryPoint[];
 }
 
 export interface DeviceBreakdownEntry {
