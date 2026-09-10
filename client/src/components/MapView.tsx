@@ -19,7 +19,7 @@ interface MapViewProps {
   allowFullscreen?: boolean;
 }
 
-const MOVE_ANIMATION_MS = 1400;
+const MOVE_ANIMATION_MS = 1800;
 
 function easeInOutQuad(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -79,7 +79,6 @@ export default function MapView({
   const circleRef = useRef<L.Circle | null>(null);
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const glideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -119,7 +118,6 @@ export default function MapView({
 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      if (glideTimeoutRef.current) clearTimeout(glideTimeoutRef.current);
       map.remove();
       mapRef.current = null;
     };
@@ -143,10 +141,6 @@ export default function MapView({
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    if (glideTimeoutRef.current) {
-      clearTimeout(glideTimeoutRef.current);
-      glideTimeoutRef.current = null;
-    }
 
     if (!from || (from.lat === to.lat && from.lng === to.lng)) {
       // First render, or only the zoom/label changed — nothing to glide between.
@@ -154,36 +148,27 @@ export default function MapView({
       circle.setLatLng(to);
       map.setView(to, zoom, { animate: true });
     } else {
-      // Show the move rather than teleporting: zoom out just enough to fit both the old and
-      // new spot, let the marker visibly glide across that fixed view from one to the other,
-      // then zoom back in on the destination — instead of snapping the pin (or the whole
-      // camera) straight to the new point.
-      const bounds = L.latLngBounds([
-        [from.lat, from.lng],
-        [to.lat, to.lng],
-      ]);
-      map.flyToBounds(bounds, { paddingTopLeft: [40, 70], paddingBottomRight: [40, 40], maxZoom: zoom, duration: 0.6 });
-
-      const tick = (startTime: number) => (now: number) => {
+      // One continuous motion: the marker, its accuracy circle, and the map's own center all
+      // glide together from the old point to the new one, in lockstep, every frame — rather
+      // than snapping the pin and separately flying/zooming the camera, which reads as two
+      // disjointed jumps instead of a single smooth "walk" across the map.
+      const startTime = performance.now();
+      const tick = (now: number) => {
         const t = Math.min(1, (now - startTime) / MOVE_ANIMATION_MS);
         const eased = easeInOutQuad(t);
         const lat = from.lat + (to.lat - from.lat) * eased;
         const lng = from.lng + (to.lng - from.lng) * eased;
-        marker.setLatLng([lat, lng]);
-        circle.setLatLng([lat, lng]);
+        const point: L.LatLngTuple = [lat, lng];
+        marker.setLatLng(point);
+        circle.setLatLng(point);
+        map.panTo(point, { animate: false });
         if (t < 1) {
-          animationFrameRef.current = requestAnimationFrame(tick(startTime));
+          animationFrameRef.current = requestAnimationFrame(tick);
         } else {
           animationFrameRef.current = null;
-          // Settled on the destination — zoom back in to the usual close-up level.
-          map.flyTo(to, zoom, { duration: 0.6 });
         }
       };
-
-      // Give the zoom-out a moment to settle before the marker starts gliding across it.
-      glideTimeoutRef.current = setTimeout(() => {
-        animationFrameRef.current = requestAnimationFrame(tick(performance.now()));
-      }, 650);
+      animationFrameRef.current = requestAnimationFrame(tick);
     }
 
     // Resize is needed when the container becomes visible after being hidden (e.g. tab switch).
