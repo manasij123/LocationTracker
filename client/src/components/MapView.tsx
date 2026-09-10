@@ -74,15 +74,15 @@ function buildFlowingRouteIcons(): google.maps.IconSequence[] {
     {
       icon: {
         path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 2.6,
+        scale: 2,
         strokeColor: "#ffffff",
         strokeWeight: 1,
-        strokeOpacity: 0.9,
+        strokeOpacity: 0.85,
         fillColor: ROUTE_COLOR,
-        fillOpacity: 1,
+        fillOpacity: 0.9,
       },
       offset: "0%",
-      repeat: "60px",
+      repeat: "110px",
     },
   ];
 }
@@ -198,12 +198,13 @@ export default function MapView({
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
-  const routePolylinesRef = useRef<google.maps.Polyline[]>([]);
   const historyMarkersRef = useRef<HtmlOverlayInstance[]>([]);
   const historyPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const lastHistoryKeyRef = useRef<string | null>(null);
   const flowOffsetRef = useRef(0);
   const flowAnimationFrameRef = useRef<number | null>(null);
+  const activeFlowPolylineRef = useRef<google.maps.Polyline | null>(null);
+  const flowStopAtRef = useRef(0);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -257,12 +258,12 @@ export default function MapView({
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       overlayRef.current?.setMap(null);
       circleRef.current?.setMap(null);
-      routePolylinesRef.current.forEach((p) => p.setMap(null));
-      routePolylinesRef.current = [];
       historyMarkersRef.current.forEach((m) => m.setMap(null));
       historyMarkersRef.current = [];
       historyPolylinesRef.current.forEach((p) => p.setMap(null));
       historyPolylinesRef.current = [];
+      if (flowAnimationFrameRef.current) cancelAnimationFrame(flowAnimationFrameRef.current);
+      activeFlowPolylineRef.current = null;
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -367,17 +368,10 @@ export default function MapView({
     let cancelled = false;
     fetchRoutePath(directionsServiceRef.current, from, to).then((path) => {
       if (cancelled) return;
+      // The route line itself (with its flowing-arrow animation) is drawn by the history
+      // effect below, which owns every segment including this latest one — this effect only
+      // needs the path to animate the marker along.
       if (path) {
-        routePolylinesRef.current.push(
-          new google.maps.Polyline({
-            path,
-            strokeColor: ROUTE_COLOR,
-            strokeWeight: 4,
-            strokeOpacity: 0.75,
-            icons: buildFlowingRouteIcons(),
-            map,
-          })
-        );
         glideAlong(path);
       } else {
         // No road route available (or Directions API not reachable) — fall back to the
@@ -425,22 +419,28 @@ export default function MapView({
     }
     const service = directionsServiceRef.current;
 
+    // Only the most recent segment (the last history point to wherever the share is now, or
+    // the only segment if there's just one past point) gets the flowing-arrow animation, and
+    // only briefly — every older segment is a plain, static line.
+    const lastSegmentIndex = chain.length - 1;
+
     let cancelled = false;
     for (let i = 1; i < chain.length; i++) {
       const origin = chain[i - 1];
       const destination = chain[i];
+      const isLastSegment = i === lastSegmentIndex;
       fetchRoutePath(service, origin, destination).then((path) => {
         if (cancelled) return;
-        historyPolylinesRef.current.push(
-          new google.maps.Polyline({
-            path: path || [origin, destination], // no road route available — straight fallback segment
-            strokeColor: ROUTE_COLOR,
-            strokeWeight: 4,
-            strokeOpacity: 0.75,
-            icons: buildFlowingRouteIcons(),
-            map,
-          })
-        );
+        const polyline = new google.maps.Polyline({
+          path: path || [origin, destination], // no road route available — straight fallback segment
+          strokeColor: ROUTE_COLOR,
+          strokeWeight: 4,
+          strokeOpacity: 0.75,
+          icons: isLastSegment ? buildFlowingRouteIcons() : undefined,
+          map,
+        });
+        historyPolylinesRef.current.push(polyline);
+        if (isLastSegment) startFlowAnimation(polyline);
       });
     }
 
@@ -449,28 +449,30 @@ export default function MapView({
     };
   }, [ready, history, latitude, longitude]);
 
-  // A single continuous animation loop drives the "flowing arrow" motion on every route
-  // polyline at once (live and historical), rather than each polyline running its own timer.
-  useEffect(() => {
-    if (!ready) return;
-    let frame: number;
+  // Plays the flowing-arrow animation on a single polyline (the most recent segment) for a
+  // few seconds, then stops — a brief highlight of "this is what just moved", not a
+  // permanent decoration. Re-arming while already running just extends/retargets it.
+  function startFlowAnimation(polyline: google.maps.Polyline) {
+    activeFlowPolylineRef.current = polyline;
+    flowStopAtRef.current = performance.now() + 2500;
+    if (flowAnimationFrameRef.current != null) return;
+
     function tick() {
-      flowOffsetRef.current = (flowOffsetRef.current + 0.7) % 100;
-      const offset = `${flowOffsetRef.current}%`;
-      for (const polyline of [...routePolylinesRef.current, ...historyPolylinesRef.current]) {
-        const icons = polyline.get("icons");
-        if (icons && icons[0]) {
-          icons[0].offset = offset;
-          polyline.set("icons", icons);
-        }
+      const target = activeFlowPolylineRef.current;
+      if (!target || performance.now() > flowStopAtRef.current) {
+        flowAnimationFrameRef.current = null;
+        return;
       }
-      frame = requestAnimationFrame(tick);
-      flowAnimationFrameRef.current = frame;
+      flowOffsetRef.current = (flowOffsetRef.current + 0.25) % 100;
+      const icons = target.get("icons");
+      if (icons && icons[0]) {
+        icons[0].offset = `${flowOffsetRef.current}%`;
+        target.set("icons", icons);
+      }
+      flowAnimationFrameRef.current = requestAnimationFrame(tick);
     }
-    frame = requestAnimationFrame(tick);
-    flowAnimationFrameRef.current = frame;
-    return () => cancelAnimationFrame(frame);
-  }, [ready]);
+    flowAnimationFrameRef.current = requestAnimationFrame(tick);
+  }
 
   // Fullscreen toggle: lock body scroll and force Google Maps to re-measure its container.
   useEffect(() => {
