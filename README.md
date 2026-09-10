@@ -12,8 +12,8 @@ PWA.
 
 ## Stack
 
-- **Client**: React + TypeScript + Vite, React Router, Leaflet (OpenStreetMap
-  tiles), Recharts, hand-written CSS design system (light/dark themes).
+- **Client**: React + TypeScript + Vite, React Router, Google Maps JavaScript
+  API for the map, Recharts, hand-written CSS design system (light/dark themes).
 - **Server**: Node.js + Express + TypeScript, Prisma ORM, PostgreSQL, Zod
   validation, express-rate-limit, helmet.
 
@@ -69,9 +69,19 @@ cd server && npm test
   or internet access.
 - `nominatim` (`MAP_PROVIDER=nominatim`) — calls the public OpenStreetMap
   Nominatim search API for live results.
+- `google` (`MAP_PROVIDER=google`) — Google Places API (New) Text Search, the
+  best result coverage/quality (especially for small local place names), at
+  the cost of requiring a billed `GEOCODING_API_KEY` (restricted to Places
+  API (New) only, no `Application restrictions` since it's called server-side).
 
-Map tiles are always fetched live from OpenStreetMap's raster tile servers
-(no key required); Leaflet renders a fully interactive, pannable/zoomable map.
+The map itself is rendered client-side with the Google Maps JavaScript API,
+which needs its own separate, browser-restricted key: set
+`VITE_GOOGLE_MAPS_API_KEY` in `client/.env` to a key restricted (in Google
+Cloud) to the Maps JavaScript API and to this app's origin(s) via an HTTP
+referrer restriction — this key is publicly visible in the built frontend
+bundle by design, so the referrer restriction is what keeps it from being
+usable elsewhere. Without this key the map area shows a "couldn't load the
+map" placeholder; everything else in the app still works.
 
 ## Deploying (hosting) SpotShare
 
