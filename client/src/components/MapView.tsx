@@ -130,7 +130,8 @@ export default function MapView({
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
-  const routePolylineRef = useRef<google.maps.Polyline | null>(null);
+  const routePolylinesRef = useRef<google.maps.Polyline[]>([]);
+  const historyMarkersRef = useRef<google.maps.Marker[]>([]);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -184,7 +185,10 @@ export default function MapView({
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       overlayRef.current?.setMap(null);
       circleRef.current?.setMap(null);
-      routePolylineRef.current?.setMap(null);
+      routePolylinesRef.current.forEach((p) => p.setMap(null));
+      routePolylinesRef.current = [];
+      historyMarkersRef.current.forEach((m) => m.setMap(null));
+      historyMarkersRef.current = [];
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,10 +218,6 @@ export default function MapView({
       animationFrameRef.current = null;
     }
 
-    // Clear the previous move's route trail before starting a new one.
-    routePolylineRef.current?.setMap(null);
-    routePolylineRef.current = null;
-
     if (!from || (from.lat === to.lat && from.lng === to.lng)) {
       overlay.setPosition(to);
       circle.setCenter(to);
@@ -225,6 +225,19 @@ export default function MapView({
       map.setZoom(zoom);
       return;
     }
+
+    // A real move: pin the spot we're leaving with a numbered marker, so the recipient can
+    // see the share's whole journey (1st location, 2nd, 3rd, ...) as updates come in — this
+    // and every earlier route segment stay on the map rather than being replaced.
+    const sequenceNumber = historyMarkersRef.current.length + 1;
+    historyMarkersRef.current.push(
+      new google.maps.Marker({
+        position: from,
+        map,
+        label: { text: String(sequenceNumber), color: "#ffffff", fontWeight: "700" },
+        title: `Point ${sequenceNumber}: previous location`,
+      })
+    );
 
     function glideAlong(path: google.maps.LatLngLiteral[]) {
       // Constant-speed interpolation along a multi-point path, using cumulative
@@ -297,13 +310,15 @@ export default function MapView({
         if (cancelled) return;
         if (status === google.maps.DirectionsStatus.OK && result?.routes[0]) {
           const path = result.routes[0].overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
-          routePolylineRef.current = new google.maps.Polyline({
-            path,
-            strokeColor: ROUTE_COLOR,
-            strokeWeight: 4,
-            strokeOpacity: 0.85,
-            map,
-          });
+          routePolylinesRef.current.push(
+            new google.maps.Polyline({
+              path,
+              strokeColor: ROUTE_COLOR,
+              strokeWeight: 4,
+              strokeOpacity: 0.85,
+              map,
+            })
+          );
           glideAlong(path);
         } else {
           // No road route available (or Directions API not reachable) — fall back to the
