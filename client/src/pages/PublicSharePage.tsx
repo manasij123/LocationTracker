@@ -121,7 +121,10 @@ export default function PublicSharePage() {
             />
 
             <div className="card card-pad mt-16">
-              <div style={{ fontWeight: 800, fontSize: 17 }}>📍 {share.placeName}</div>
+              <div className="text-faint" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>
+                Me at
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>📍 {share.placeName}</div>
               <div className="text-muted mt-8" style={{ fontSize: 13.5 }}>{share.formattedAddress}</div>
             </div>
 
