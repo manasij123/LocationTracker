@@ -40,15 +40,56 @@ function totalRouteDistanceMeters(route: google.maps.DirectionsRoute): number {
   return route.legs.reduce((sum, leg) => sum + (leg.distance?.value ?? 0), 0);
 }
 
-/** Fetches the shortest (by distance, not just fastest) driving route between two points,
- *  with its ends pinned to the exact requested coordinates — Directions snaps the origin/
- *  destination to the nearest routable road, which can leave a visible gap otherwise. Resolves
- *  to null (never rejects) if no route is available, so callers can fall back gracefully. */
-function fetchRoutePath(
+interface RouteStep {
+  path: google.maps.LatLngLiteral[];
+  durationSeconds: number;
+}
+
+interface RouteTimeline {
+  /** Each leg of the trip (e.g. walk, then train, then walk) with its own realistic duration,
+   *  so playback can move at a different pace per leg instead of one constant speed. */
+  steps: RouteStep[];
+  /** All steps' paths concatenated, for drawing the whole route as one line. */
+  path: google.maps.LatLngLiteral[];
+  totalDurationSeconds: number;
+}
+
+function buildTimelineFromRoute(
+  route: google.maps.DirectionsRoute,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral
+): RouteTimeline {
+  const steps: RouteStep[] = [];
+  for (const leg of route.legs) {
+    for (const step of leg.steps) {
+      const stepPath =
+        step.path && step.path.length > 0
+          ? step.path.map((p) => ({ lat: p.lat(), lng: p.lng() }))
+          : [
+              { lat: step.start_location.lat(), lng: step.start_location.lng() },
+              { lat: step.end_location.lat(), lng: step.end_location.lng() },
+            ];
+      steps.push({ path: stepPath, durationSeconds: step.duration?.value ?? 0 });
+    }
+  }
+  // Pin the very first and last points to the exact requested coordinates — Directions snaps
+  // to the nearest road/stop, which can otherwise leave a visible gap at either end.
+  if (steps.length > 0) {
+    steps[0].path[0] = origin;
+    const lastStep = steps[steps.length - 1];
+    lastStep.path[lastStep.path.length - 1] = destination;
+  }
+  const totalDurationSeconds = steps.reduce((sum, s) => sum + s.durationSeconds, 0) || 1;
+  return { steps, path: steps.flatMap((s) => s.path), totalDurationSeconds };
+}
+
+/** Fetches the shortest (by distance) driving route as a single-step timeline — used when no
+ *  transit coverage exists for a pair of points. Resolves to null if no route is available. */
+function fetchDrivingTimeline(
   service: google.maps.DirectionsService,
   origin: google.maps.LatLngLiteral,
   destination: google.maps.LatLngLiteral
-): Promise<google.maps.LatLngLiteral[] | null> {
+): Promise<RouteTimeline | null> {
   return new Promise((resolve) => {
     service.route(
       { origin, destination, travelMode: google.maps.TravelMode.DRIVING, provideRouteAlternatives: true },
@@ -60,11 +101,83 @@ function fetchRoutePath(
         const shortest = result.routes.reduce((best, route) =>
           totalRouteDistanceMeters(route) < totalRouteDistanceMeters(best) ? route : best
         );
-        const roadPath = shortest.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
-        resolve([origin, ...roadPath, destination]);
+        resolve(buildTimelineFromRoute(shortest, origin, destination));
       }
     );
   });
+}
+
+/** Fetches a realistic, real-world-paced route between two points: walking + public transit
+ *  (bus/train/metro) legs when available — exactly what Google Maps shows for "how long would
+ *  this actually take" — falling back to the shortest driving route when there's no transit
+ *  coverage for this pair (e.g. a short local hop, or a region with sparse transit data).
+ *  Resolves to null (never rejects) only if neither mode returns anything usable. */
+function fetchRouteTimeline(
+  service: google.maps.DirectionsService,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral
+): Promise<RouteTimeline | null> {
+  return new Promise((resolve) => {
+    service.route({ origin, destination, travelMode: google.maps.TravelMode.TRANSIT }, (result, status) => {
+      if (status === google.maps.DirectionsStatus.OK && result && result.routes[0]) {
+        resolve(buildTimelineFromRoute(result.routes[0], origin, destination));
+        return;
+      }
+      fetchDrivingTimeline(service, origin, destination).then(resolve);
+    });
+  });
+}
+
+/** Maps how long a trip realistically takes to how long its on-screen animation should play —
+ *  compressed so a 30-minute cross-town trip doesn't mean a literal 30-minute wait, but still
+ *  scaled so longer real trips visibly take longer to watch than shorter ones (diminishing
+ *  returns via sqrt, so the gap between "1 min" and "5 min" reads clearly, while "10 min" and
+ *  "30 min" don't force an impractically long animation). */
+function playbackDurationMs(totalDurationSeconds: number): number {
+  const scaled = 2000 + Math.sqrt(totalDurationSeconds) * 300;
+  return Math.min(18000, Math.max(2200, scaled));
+}
+
+/** A point a given fraction of the way along a path, by cumulative great-circle distance
+ *  (so speed is constant across a path's own points, which approximates real motion well
+ *  within a single step of a trip). */
+function pointAlongPath(path: google.maps.LatLngLiteral[], fraction: number): google.maps.LatLngLiteral {
+  if (path.length === 1) return path[0];
+  const cumulative = [0];
+  for (let i = 1; i < path.length; i++) {
+    cumulative.push(cumulative[i - 1] + distanceKm(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng));
+  }
+  const total = cumulative[cumulative.length - 1] || 1;
+  const target = Math.min(1, Math.max(0, fraction)) * total;
+  let i = 1;
+  while (i < cumulative.length - 1 && cumulative[i] < target) i++;
+  const segFrom = path[i - 1];
+  const segTo = path[i];
+  const segLen = cumulative[i] - cumulative[i - 1];
+  const segFraction = segLen > 0 ? (target - cumulative[i - 1]) / segLen : 0;
+  return {
+    lat: segFrom.lat + (segTo.lat - segFrom.lat) * segFraction,
+    lng: segFrom.lng + (segTo.lng - segFrom.lng) * segFraction,
+  };
+}
+
+/** The marker's position at a given point in *real* elapsed trip time — finds which step that
+ *  moment falls in (e.g. still walking, or now on the train) and interpolates within it. This
+ *  is what makes playback speed vary realistically: a step covering a lot of ground in a short
+ *  real duration (a train ride) visibly moves faster than one covering little ground over a
+ *  long duration (a walk), because both are being played back at the same time-compression. */
+function pointAtElapsedSeconds(steps: RouteStep[], elapsedSeconds: number): google.maps.LatLngLiteral {
+  let acc = 0;
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (elapsedSeconds <= acc + step.durationSeconds || i === steps.length - 1) {
+      const localFraction = step.durationSeconds > 0 ? (elapsedSeconds - acc) / step.durationSeconds : 1;
+      return pointAlongPath(step.path, localFraction);
+    }
+    acc += step.durationSeconds;
+  }
+  const lastPath = steps[steps.length - 1].path;
+  return lastPath[lastPath.length - 1];
 }
 
 /** A small arrow symbol repeated along a polyline, animated by sliding its offset — gives the
@@ -301,33 +414,16 @@ export default function MapView({
       return;
     }
 
-    function glideAlong(path: google.maps.LatLngLiteral[]) {
-      // Constant-speed interpolation along a multi-point path, using cumulative
-      // great-circle distance so the marker doesn't speed up/slow down between segments.
-      const cumulative = [0];
-      for (let i = 1; i < path.length; i++) {
-        cumulative.push(cumulative[i - 1] + distanceKm(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng));
-      }
-      const total = cumulative[cumulative.length - 1] || 1;
-
-      function pointAt(fraction: number): google.maps.LatLngLiteral {
-        const target = fraction * total;
-        let i = 1;
-        while (i < cumulative.length - 1 && cumulative[i] < target) i++;
-        const segFrom = path[i - 1];
-        const segTo = path[i];
-        const segLen = cumulative[i] - cumulative[i - 1];
-        const segFraction = segLen > 0 ? (target - cumulative[i - 1]) / segLen : 0;
-        return {
-          lat: segFrom.lat + (segTo.lat - segFrom.lat) * segFraction,
-          lng: segFrom.lng + (segTo.lng - segFrom.lng) * segFraction,
-        };
-      }
-
+    // Glides at a pace that reflects how long the trip would realistically take (walking,
+    // then a train, then walking again — whatever the route actually involves), not a fixed
+    // duration regardless of distance or mode.
+    function glideAlongTimeline(steps: RouteStep[], totalDurationSeconds: number) {
+      const playbackMs = playbackDurationMs(totalDurationSeconds);
       const startTime = performance.now();
       const tick = (now: number) => {
-        const t = Math.min(1, (now - startTime) / MOVE_ANIMATION_MS);
-        const point = pointAt(easeInOutQuad(t));
+        const t = Math.min(1, (now - startTime) / playbackMs);
+        const elapsedSeconds = easeInOutQuad(t) * totalDurationSeconds;
+        const point = pointAtElapsedSeconds(steps, elapsedSeconds);
         overlay.setPosition(point);
         circle.setCenter(point);
         map.setCenter(point);
@@ -366,16 +462,16 @@ export default function MapView({
     }
 
     let cancelled = false;
-    fetchRoutePath(directionsServiceRef.current, from, to).then((path) => {
+    fetchRouteTimeline(directionsServiceRef.current, from, to).then((timeline) => {
       if (cancelled) return;
       // The route line itself (with its flowing-arrow animation) is drawn by the history
       // effect below, which owns every segment including this latest one — this effect only
-      // needs the path to animate the marker along.
-      if (path) {
-        glideAlong(path);
+      // needs the timeline to animate the marker along at a realistic pace.
+      if (timeline) {
+        glideAlongTimeline(timeline.steps, timeline.totalDurationSeconds);
       } else {
-        // No road route available (or Directions API not reachable) — fall back to the
-        // previous straight-line glide so the marker still moves.
+        // No route available at all (Directions API unreachable) — fall back to a fixed-time
+        // straight-line glide so the marker still moves.
         glideStraightLine(from);
       }
     });
@@ -429,10 +525,10 @@ export default function MapView({
       const origin = chain[i - 1];
       const destination = chain[i];
       const isLastSegment = i === lastSegmentIndex;
-      fetchRoutePath(service, origin, destination).then((path) => {
+      fetchRouteTimeline(service, origin, destination).then((timeline) => {
         if (cancelled) return;
         const polyline = new google.maps.Polyline({
-          path: path || [origin, destination], // no road route available — straight fallback segment
+          path: timeline?.path || [origin, destination], // no route available — straight fallback segment
           strokeColor: ROUTE_COLOR,
           strokeWeight: 4,
           strokeOpacity: 0.75,

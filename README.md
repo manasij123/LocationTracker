@@ -93,12 +93,20 @@ usable elsewhere. Without this key the map area shows a "couldn't load the
 map" placeholder; everything else in the app still works.
 
 When a creator updates an active share's location (same link, new spot),
-the map glides the marker along the actual road route between the old and
-new point (drawn as a red line) instead of a straight line, using the
-Directions API. This needs **Directions API** enabled for the same Google
-Cloud project and added to that browser key's API restrictions list
-alongside Maps JavaScript API — without it, the marker still moves (falls
-back to a straight-line glide), just without the road-following path.
+the map glides the marker along the actual route between the old and new
+point — walking + public transit legs when Google has transit coverage
+for that pair of points (so a walk-to-station, train, walk-from-station
+trip visibly changes pace per leg), falling back to the shortest driving
+route otherwise. Playback speed is scaled from the trip's real estimated
+duration (a 2-minute hop animates quickly, a 30-minute cross-town trip
+takes noticeably longer to watch, compressed to stay within a few
+seconds) rather than always taking the same fixed time regardless of
+distance. This needs **Directions API** enabled for the same Google Cloud
+project and added to that browser key's API restrictions list alongside
+Maps JavaScript API (transit and driving are both just travel modes
+within that one API, no separate one to enable) — without it, the marker
+still moves (falls back to a fixed-time straight-line glide), just
+without the route-following, realistically-paced animation.
 
 ## Deploying (hosting) SpotShare
 
