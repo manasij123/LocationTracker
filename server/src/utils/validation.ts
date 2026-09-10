@@ -31,6 +31,9 @@ export const updateLocationSchema = z.object({
   /** Optional creator-supplied travel time (seconds) for the move to this new location, used
    *  instead of the auto-estimated Google Maps duration when animating the transition. */
   travelDurationSeconds: z.number().int().positive().max(24 * 60 * 60).optional(),
+  /** Optional creator-chosen travel mode for the move to this new location — picks which
+   *  route/path to animate along instead of auto-detecting (transit, else driving). */
+  travelMode: z.enum(["driving", "walking", "bicycling", "transit"]).optional(),
 });
 
 export const shareListQuerySchema = z.object({

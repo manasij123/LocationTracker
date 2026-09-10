@@ -223,6 +223,44 @@ describe("SpotShare API", () => {
     expect(publicRes.body.share.locationHistory[0].travelDurationSeconds).toBe(600);
   });
 
+  it("stores a creator-chosen travel mode for a location update", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({ placeName: "Origin", formattedAddress: "Origin Addr", latitude: 22.5, longitude: 88.3, durationMinutes: 30 });
+    const shareId = createRes.body.share.id as string;
+
+    await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({
+        placeName: "Destination",
+        formattedAddress: "Destination Addr",
+        latitude: 22.55,
+        longitude: 88.35,
+        travelMode: "walking",
+      });
+
+    const publicRes = await request(app).get(`/api/shares/${shareId}`);
+    expect(publicRes.body.share.locationHistory[0].travelMode).toBe("walking");
+  });
+
+  it("rejects an invalid travel mode for a location update", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({ placeName: "Origin", formattedAddress: "Origin Addr", latitude: 22.5, longitude: 88.3, durationMinutes: 30 });
+    const shareId = createRes.body.share.id as string;
+
+    const res = await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({
+        placeName: "Destination",
+        formattedAddress: "Destination Addr",
+        latitude: 22.55,
+        longitude: 88.35,
+        travelMode: "teleport",
+      });
+    expect(res.status).toBe(400);
+  });
+
   it("rejects a location update on a revoked share", async () => {
     const createRes = await request(app)
       .post("/api/shares")

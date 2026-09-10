@@ -80,6 +80,10 @@ model LocationHistory {
   /// Optional creator-supplied travel time (seconds) for the move away from this point, used
   /// in place of the auto-estimated Google Maps duration when animating that transition.
   travelDurationSeconds Int?
+  /// Optional creator-chosen travel mode ("driving" | "walking" | "bicycling" | "transit") for
+  /// the move away from this point — picks which route/path to animate along. Null means
+  /// auto-detect (transit if available, else driving), same as before this existed.
+  travelMode String?
 
   @@index([shareId])
   @@index([createdAt])

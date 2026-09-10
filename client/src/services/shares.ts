@@ -42,6 +42,9 @@ export interface UpdateLocationPayload {
   /** Optional creator-supplied travel time (seconds) for this move, used instead of the
    *  auto-estimated Google Maps duration when animating the transition. */
   travelDurationSeconds?: number;
+  /** Optional creator-chosen travel mode for this move — picks which route/path to animate
+   *  along instead of auto-detecting (transit, else driving). */
+  travelMode?: "driving" | "walking" | "bicycling" | "transit";
 }
 
 export function updateShareLocation(shareId: string, payload: UpdateLocationPayload) {

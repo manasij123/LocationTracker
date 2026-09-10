@@ -100,10 +100,14 @@ trip visibly changes pace per leg), falling back to the shortest driving
 route otherwise. Playback plays out at the trip's real estimated duration
 — a 7-minute walk's glide takes 7 real minutes and arrives exactly on
 that mark, the same number Google Maps itself would show for those two
-points — rather than a fixed time regardless of distance. The creator can
-override this with their own travel time (in minutes) when updating a
-location, which rescales every leg's pace proportionally to match while
-keeping the walk-slower/train-faster shape intact. This needs **Directions API** enabled for the same Google Cloud
+points — rather than a fixed time regardless of distance. When updating a
+location, the creator sees Google's own per-mode estimates (driving,
+transit, walking, cycling — like Google Maps' own route picker) and can
+pick whichever matches how they're actually getting there, which then
+also decides the path drawn; "Recommended" keeps the transit-else-driving
+auto-detection. They can also type an exact travel time (in minutes),
+which rescales every leg's pace proportionally to match while keeping the
+walk-slower/train-faster shape intact. This needs **Directions API** enabled for the same Google Cloud
 project and added to that browser key's API restrictions list alongside
 Maps JavaScript API (transit and driving are both just travel modes
 within that one API, no separate one to enable) — without it, the marker

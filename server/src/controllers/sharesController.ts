@@ -155,6 +155,7 @@ export async function updateLocation(req: Request, res: Response) {
       latitude: share.latitude,
       longitude: share.longitude,
       travelDurationSeconds: data.travelDurationSeconds ?? null,
+      travelMode: data.travelMode ?? null,
     },
   });
 
@@ -304,6 +305,7 @@ type LocationHistoryRow = {
   longitude: number;
   createdAt: Date;
   travelDurationSeconds: number | null;
+  travelMode: string | null;
 };
 
 function historyDto(history: LocationHistoryRow[]) {
@@ -314,6 +316,7 @@ function historyDto(history: LocationHistoryRow[]) {
     longitude: h.longitude,
     updatedAt: h.createdAt,
     travelDurationSeconds: h.travelDurationSeconds,
+    travelMode: h.travelMode,
   }));
 }
 

@@ -89,6 +89,7 @@ export default function LocationDetails() {
           placeName={share.placeName}
           history={share.locationHistory}
           overrideDurationSeconds={share.locationHistory?.[share.locationHistory.length - 1]?.travelDurationSeconds ?? null}
+          overrideTravelMode={share.locationHistory?.[share.locationHistory.length - 1]?.travelMode ?? null}
           height={280}
         />
       </div>
@@ -172,6 +173,8 @@ export default function LocationDetails() {
         open={updateOpen}
         shareId={share.id}
         currentPlaceName={share.placeName}
+        currentLatitude={share.latitude}
+        currentLongitude={share.longitude}
         onClose={() => setUpdateOpen(false)}
         onUpdated={() => {
           setUpdateOpen(false);

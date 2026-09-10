@@ -128,6 +128,45 @@ function fetchRouteTimeline(
   });
 }
 
+function fetchSingleModeTimeline(
+  service: google.maps.DirectionsService,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
+  mode: google.maps.TravelMode
+): Promise<RouteTimeline | null> {
+  return new Promise((resolve) => {
+    service.route({ origin, destination, travelMode: mode }, (result, status) => {
+      if (status === google.maps.DirectionsStatus.OK && result && result.routes[0]) {
+        resolve(buildTimelineFromRoute(result.routes[0], origin, destination));
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+/** Fetches a route for a creator-chosen travel mode (set per-segment via LocationHistory's
+ *  travelMode) if one was given, otherwise the usual auto-detected transit-else-driving route. */
+function fetchRouteTimelineForSegment(
+  service: google.maps.DirectionsService,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
+  travelMode?: string | null
+): Promise<RouteTimeline | null> {
+  switch (travelMode) {
+    case "driving":
+      return fetchDrivingTimeline(service, origin, destination);
+    case "walking":
+      return fetchSingleModeTimeline(service, origin, destination, google.maps.TravelMode.WALKING);
+    case "bicycling":
+      return fetchSingleModeTimeline(service, origin, destination, google.maps.TravelMode.BICYCLING);
+    case "transit":
+      return fetchSingleModeTimeline(service, origin, destination, google.maps.TravelMode.TRANSIT);
+    default:
+      return fetchRouteTimeline(service, origin, destination);
+  }
+}
+
 /** Plays back at the real, estimated pace — a 7-minute walk's glide takes 7 real minutes and
  *  arrives exactly on that mark, matching what Google Maps' own "how long will this take"
  *  estimate says, rather than a compressed preview. */
@@ -295,6 +334,7 @@ interface HistoryPoint {
   longitude: number;
   placeName: string;
   travelDurationSeconds?: number | null;
+  travelMode?: string | null;
   /** When this point stopped being current (i.e. when the move away from it started) — used
    *  on mount to detect "the page loaded mid-transition" and resume the glide realistically
    *  instead of snapping straight to the destination. */
@@ -315,6 +355,9 @@ interface MapViewProps {
    *  that just brought the share to (latitude, longitude) — overriding the auto-estimated
    *  Google Maps duration for that specific glide. */
   overrideDurationSeconds?: number | null;
+  /** Creator-chosen travel mode for the current/live transition — picks which route/path to
+   *  fetch and animate along instead of auto-detecting (transit, else driving). */
+  overrideTravelMode?: string | null;
   height?: number | string;
   zoom?: number;
   interactive?: boolean;
@@ -330,6 +373,7 @@ export default function MapView({
   label,
   history = [],
   overrideDurationSeconds = null,
+  overrideTravelMode = null,
   height = 320,
   zoom = 15,
   interactive = true,
@@ -569,7 +613,7 @@ export default function MapView({
     }
 
     let cancelled = false;
-    fetchRouteTimeline(directionsServiceRef.current, from, to).then((timeline) => {
+    fetchRouteTimelineForSegment(directionsServiceRef.current, from, to, overrideTravelMode).then((timeline) => {
       if (cancelled) return;
       if (timeline) {
         const finalTimeline = overrideDurationSeconds ? applyDurationOverride(timeline, overrideDurationSeconds) : timeline;
@@ -595,7 +639,7 @@ export default function MapView({
     return () => {
       cancelled = true;
     };
-  }, [latitude, longitude, label, zoom, ready, overrideDurationSeconds]);
+  }, [latitude, longitude, label, zoom, ready, overrideDurationSeconds, overrideTravelMode]);
 
   // Render the share's past points (server-persisted, so this survives reloads) as numbered
   // pins, each consecutive pair connected by the same bold, road-following route the live
@@ -642,7 +686,8 @@ export default function MapView({
       if (i === lastSegmentIndex && liveSegmentActiveRef.current) continue;
       const origin = chain[i - 1];
       const destination = chain[i];
-      fetchRouteTimeline(service, origin, destination).then((timeline) => {
+      const segmentTravelMode = history[i - 1]?.travelMode;
+      fetchRouteTimelineForSegment(service, origin, destination, segmentTravelMode).then((timeline) => {
         if (cancelled) return;
         const polyline = new google.maps.Polyline({
           path: timeline?.path || [origin, destination], // no route available — straight fallback segment

@@ -16,6 +16,7 @@ export interface LocationHistoryPoint {
   longitude: number;
   updatedAt: string;
   travelDurationSeconds: number | null;
+  travelMode: string | null;
 }
 
 export interface Share {
