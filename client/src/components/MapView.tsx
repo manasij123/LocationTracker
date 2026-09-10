@@ -19,6 +19,12 @@ interface MapViewProps {
   allowFullscreen?: boolean;
 }
 
+const MOVE_ANIMATION_MS = 1400;
+
+function easeInOutQuad(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -71,6 +77,9 @@ export default function MapView({
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const circleRef = useRef<L.Circle | null>(null);
+  const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const glideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -109,6 +118,8 @@ export default function MapView({
     circleRef.current = circle;
 
     return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (glideTimeoutRef.current) clearTimeout(glideTimeoutRef.current);
       map.remove();
       mapRef.current = null;
     };
@@ -117,12 +128,64 @@ export default function MapView({
 
   useEffect(() => {
     if (!mapRef.current || !markerRef.current || !circleRef.current) return;
-    const latlng: L.LatLngExpression = [latitude, longitude];
-    markerRef.current.setLatLng(latlng);
-    markerRef.current.setIcon(buildMarkerIcon(label));
-    circleRef.current.setLatLng(latlng);
-    if (placeName) markerRef.current.bindPopup(placeName);
-    mapRef.current.setView(latlng, zoom, { animate: true });
+    const map = mapRef.current;
+    const marker = markerRef.current;
+    const circle = circleRef.current;
+
+    marker.setIcon(buildMarkerIcon(label));
+    if (placeName) marker.bindPopup(placeName);
+
+    const from = lastPositionRef.current;
+    const to = { lat: latitude, lng: longitude };
+    lastPositionRef.current = to;
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (glideTimeoutRef.current) {
+      clearTimeout(glideTimeoutRef.current);
+      glideTimeoutRef.current = null;
+    }
+
+    if (!from || (from.lat === to.lat && from.lng === to.lng)) {
+      // First render, or only the zoom/label changed — nothing to glide between.
+      marker.setLatLng(to);
+      circle.setLatLng(to);
+      map.setView(to, zoom, { animate: true });
+    } else {
+      // Show the move rather than teleporting: zoom out just enough to fit both the old and
+      // new spot, let the marker visibly glide across that fixed view from one to the other,
+      // then zoom back in on the destination — instead of snapping the pin (or the whole
+      // camera) straight to the new point.
+      const bounds = L.latLngBounds([
+        [from.lat, from.lng],
+        [to.lat, to.lng],
+      ]);
+      map.flyToBounds(bounds, { paddingTopLeft: [40, 70], paddingBottomRight: [40, 40], maxZoom: zoom, duration: 0.6 });
+
+      const tick = (startTime: number) => (now: number) => {
+        const t = Math.min(1, (now - startTime) / MOVE_ANIMATION_MS);
+        const eased = easeInOutQuad(t);
+        const lat = from.lat + (to.lat - from.lat) * eased;
+        const lng = from.lng + (to.lng - from.lng) * eased;
+        marker.setLatLng([lat, lng]);
+        circle.setLatLng([lat, lng]);
+        if (t < 1) {
+          animationFrameRef.current = requestAnimationFrame(tick(startTime));
+        } else {
+          animationFrameRef.current = null;
+          // Settled on the destination — zoom back in to the usual close-up level.
+          map.flyTo(to, zoom, { duration: 0.6 });
+        }
+      };
+
+      // Give the zoom-out a moment to settle before the marker starts gliding across it.
+      glideTimeoutRef.current = setTimeout(() => {
+        animationFrameRef.current = requestAnimationFrame(tick(performance.now()));
+      }, 650);
+    }
+
     // Resize is needed when the container becomes visible after being hidden (e.g. tab switch).
     setTimeout(() => mapRef.current?.invalidateSize(), 80);
   }, [latitude, longitude, placeName, label, zoom]);
