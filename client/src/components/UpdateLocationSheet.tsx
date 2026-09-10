@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import LocationSearch from "./LocationSearch";
 import MapView from "./MapView";
 import { loadGoogleMaps } from "../utils/googleMapsLoader";
+import { resolveCurrentPosition } from "../utils/routeTimeline";
 import { updateShareLocation } from "../services/shares";
 import { ApiRequestError } from "../services/api";
 import type { PlaceResult, Share } from "../types";
@@ -28,48 +29,51 @@ function formatDuration(seconds: number): string {
 interface UpdateLocationSheetProps {
   open: boolean;
   shareId: string;
-  currentPlaceName: string;
-  currentLatitude: number;
-  currentLongitude: number;
+  share: Share;
   onClose: () => void;
   onUpdated: (share: Share) => void;
 }
 
-export default function UpdateLocationSheet({
-  open,
-  shareId,
-  currentPlaceName,
-  currentLatitude,
-  currentLongitude,
-  onClose,
-  onUpdated,
-}: UpdateLocationSheetProps) {
+export default function UpdateLocationSheet({ open, shareId, share, onClose, onUpdated }: UpdateLocationSheetProps) {
   const [place, setPlace] = useState<PlaceResult | null>(null);
   const [travelMinutes, setTravelMinutes] = useState("");
   const [modeEstimates, setModeEstimates] = useState<Partial<Record<TravelModeKey, number>>>({});
   const [selectedMode, setSelectedMode] = useState<TravelModeKey | null>(null);
   const [loadingModes, setLoadingModes] = useState(false);
+  const [resolvedOrigin, setResolvedOrigin] = useState<{ lat: number; lng: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Look up how long each way of getting there would realistically take — like Google Maps'
   // own "Best / Driving / Transit / Walking" picker — so the creator can pick the mode that
-  // actually matches how they're getting there instead of always auto-detecting one.
+  // actually matches how they're getting there instead of always auto-detecting one. If the
+  // previous move's real travel time hasn't fully elapsed, estimates start from wherever the
+  // creator realistically is by now instead of a destination not actually reached yet.
   useEffect(() => {
     if (!place || !GOOGLE_MAPS_API_KEY) {
       setModeEstimates({});
       setSelectedMode(null);
+      setResolvedOrigin(null);
       return;
     }
     let cancelled = false;
     setLoadingModes(true);
     setSelectedMode(null);
 
+    const lastHistoryEntry = share.locationHistory[share.locationHistory.length - 1];
+    const recordedPosition = { lat: share.latitude, lng: share.longitude };
+
     loadGoogleMaps(GOOGLE_MAPS_API_KEY)
-      .then(() => {
-        if (cancelled) return;
+      .then(async () => {
+        if (cancelled) return null;
         const service = new google.maps.DirectionsService();
-        const origin = { lat: currentLatitude, lng: currentLongitude };
+
+        const origin = lastHistoryEntry
+          ? await resolveCurrentPosition(service, lastHistoryEntry, recordedPosition)
+          : recordedPosition;
+        if (cancelled) return null;
+        setResolvedOrigin(origin);
+
         const destination = { lat: place.latitude, lng: place.longitude };
         // Only safe to reference google.maps.TravelMode.* here, after the SDK has confirmed
         // loaded — evaluating it any earlier (e.g. a module-scope map) would throw.
@@ -115,7 +119,7 @@ export default function UpdateLocationSheet({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place?.latitude, place?.longitude, currentLatitude, currentLongitude]);
+  }, [place?.latitude, place?.longitude, share.latitude, share.longitude]);
 
   if (!open) return null;
 
@@ -123,6 +127,7 @@ export default function UpdateLocationSheet({
     setPlace(null);
     setTravelMinutes("");
     setSelectedMode(null);
+    setResolvedOrigin(null);
     setError(null);
     onClose();
   }
@@ -134,7 +139,7 @@ export default function UpdateLocationSheet({
     try {
       const minutes = parseFloat(travelMinutes);
       const manualSeconds = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : undefined;
-      const { share } = await updateShareLocation(shareId, {
+      const { share: updatedShare } = await updateShareLocation(shareId, {
         placeName: place.name,
         formattedAddress: place.formattedAddress,
         latitude: place.latitude,
@@ -142,11 +147,14 @@ export default function UpdateLocationSheet({
         providerPlaceId: place.placeId,
         travelDurationSeconds: manualSeconds ?? (selectedMode ? modeEstimates[selectedMode] : undefined),
         travelMode: selectedMode ?? undefined,
+        fromLatitude: resolvedOrigin?.lat,
+        fromLongitude: resolvedOrigin?.lng,
       });
-      onUpdated(share);
+      onUpdated(updatedShare);
       setPlace(null);
       setTravelMinutes("");
       setSelectedMode(null);
+      setResolvedOrigin(null);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Couldn't update the location.");
     } finally {
@@ -159,7 +167,7 @@ export default function UpdateLocationSheet({
       <div className="dialog-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ fontSize: 18, fontWeight: 800 }}>Update Location</h3>
         <p className="text-muted mt-8" style={{ fontSize: 13.5, lineHeight: 1.5 }}>
-          Moved from <strong>{currentPlaceName}</strong>? Search where you are now — the same
+          Moved from <strong>{share.placeName}</strong>? Search where you are now — the same
           link keeps working, and anyone who has it open will see it move live.
         </p>
 

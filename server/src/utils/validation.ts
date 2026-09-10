@@ -34,6 +34,12 @@ export const updateLocationSchema = z.object({
   /** Optional creator-chosen travel mode for the move to this new location — picks which
    *  route/path to animate along instead of auto-detecting (transit, else driving). */
   travelMode: z.enum(["driving", "walking", "bicycling", "transit"]).optional(),
+  /** Optional corrected departure point for the history record — where the creator realistically
+   *  was when making this update, if the previous move's real travel time hadn't fully elapsed
+   *  yet, rather than the share's last recorded (not-yet-actually-reached) position. Both or
+   *  neither; either alone is ignored. */
+  fromLatitude: z.number().min(-90).max(90).optional(),
+  fromLongitude: z.number().min(-180).max(180).optional(),
 });
 
 export const shareListQuerySchema = z.object({

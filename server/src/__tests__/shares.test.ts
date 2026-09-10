@@ -243,6 +243,30 @@ describe("SpotShare API", () => {
     expect(publicRes.body.share.locationHistory[0].travelMode).toBe("walking");
   });
 
+  it("records a corrected departure point when the client resolves one mid-transition", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({ placeName: "Origin", formattedAddress: "Origin Addr", latitude: 22.5, longitude: 88.3, durationMinutes: 30 });
+    const shareId = createRes.body.share.id as string;
+
+    // The share still says it's at "Origin" (22.5, 88.3), but the client determined the
+    // creator was realistically already partway to a previous, still-in-flight destination.
+    await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({
+        placeName: "Destination",
+        formattedAddress: "Destination Addr",
+        latitude: 22.6,
+        longitude: 88.4,
+        fromLatitude: 22.52,
+        fromLongitude: 88.32,
+      });
+
+    const publicRes = await request(app).get(`/api/shares/${shareId}`);
+    expect(publicRes.body.share.locationHistory[0].latitude).toBe(22.52);
+    expect(publicRes.body.share.locationHistory[0].longitude).toBe(88.32);
+  });
+
   it("rejects an invalid travel mode for a location update", async () => {
     const createRes = await request(app)
       .post("/api/shares")

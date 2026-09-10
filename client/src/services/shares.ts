@@ -45,6 +45,11 @@ export interface UpdateLocationPayload {
   /** Optional creator-chosen travel mode for this move — picks which route/path to animate
    *  along instead of auto-detecting (transit, else driving). */
   travelMode?: "driving" | "walking" | "bicycling" | "transit";
+  /** Optional corrected departure point — where the creator realistically was just now, if the
+   *  previous move's real travel time hadn't fully elapsed yet, instead of the share's last
+   *  recorded (not-yet-actually-reached) position. Both or neither. */
+  fromLatitude?: number;
+  fromLongitude?: number;
 }
 
 export function updateShareLocation(shareId: string, payload: UpdateLocationPayload) {

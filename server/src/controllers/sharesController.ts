@@ -147,13 +147,18 @@ export async function updateLocation(req: Request, res: Response) {
     throw new ApiError(400, `Can't update location on a share that is ${status}.`);
   }
 
+  // If the previous move's real travel time hadn't fully elapsed yet, the client resolves and
+  // sends where the creator realistically was just now, so the trail reflects the actual path
+  // rather than a destination that, in real-world terms, was never actually reached.
+  const hasCorrectedDeparture = data.fromLatitude != null && data.fromLongitude != null;
+
   await prisma.locationHistory.create({
     data: {
       shareId: share.id,
       placeName: share.placeName,
       formattedAddress: share.formattedAddress,
-      latitude: share.latitude,
-      longitude: share.longitude,
+      latitude: hasCorrectedDeparture ? (data.fromLatitude as number) : share.latitude,
+      longitude: hasCorrectedDeparture ? (data.fromLongitude as number) : share.longitude,
       travelDurationSeconds: data.travelDurationSeconds ?? null,
       travelMode: data.travelMode ?? null,
     },

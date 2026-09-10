@@ -172,9 +172,7 @@ export default function LocationDetails() {
       <UpdateLocationSheet
         open={updateOpen}
         shareId={share.id}
-        currentPlaceName={share.placeName}
-        currentLatitude={share.latitude}
-        currentLongitude={share.longitude}
+        share={share}
         onClose={() => setUpdateOpen(false)}
         onUpdated={() => {
           setUpdateOpen(false);
