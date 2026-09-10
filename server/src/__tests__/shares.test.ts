@@ -121,4 +121,52 @@ describe("SpotShare API", () => {
     expect(Array.isArray(res.body.events)).toBe(true);
     expect(res.body.events.length).toBeLessThanOrEqual(5);
   });
+
+  it("updates an active share's location without changing its link or expiry", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({
+        placeName: "Old Spot",
+        formattedAddress: "Old Address",
+        latitude: 22.5,
+        longitude: 88.3,
+        durationMinutes: 30,
+      });
+    const shareId = createRes.body.share.id as string;
+    const originalExpiresAt = createRes.body.share.expiresAt;
+
+    const updateRes = await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({
+        placeName: "New Spot",
+        formattedAddress: "New Address",
+        latitude: 22.61,
+        longitude: 88.47,
+      });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.share.placeName).toBe("New Spot");
+    expect(updateRes.body.share.latitude).toBe(22.61);
+    expect(updateRes.body.share.id).toBe(shareId);
+    expect(updateRes.body.share.expiresAt).toBe(originalExpiresAt);
+
+    const publicRes = await request(app).get(`/api/shares/${shareId}`);
+    expect(publicRes.body.share.placeName).toBe("New Spot");
+    expect(publicRes.body.share.latitude).toBe(22.61);
+
+    const activityRes = await request(app).get("/api/activity?type=shares&limit=5");
+    expect(activityRes.body.events.some((e: any) => e.type === "location_updated")).toBe(true);
+  });
+
+  it("rejects a location update on a revoked share", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({ placeName: "X", formattedAddress: "Y", latitude: 1, longitude: 1, durationMinutes: 30 });
+    const shareId = createRes.body.share.id as string;
+    await request(app).post(`/api/shares/${shareId}/revoke`);
+
+    const updateRes = await request(app)
+      .post(`/api/shares/${shareId}/location`)
+      .send({ placeName: "Z", formattedAddress: "W", latitude: 2, longitude: 2 });
+    expect(updateRes.status).toBe(400);
+  });
 });

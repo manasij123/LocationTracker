@@ -4,7 +4,7 @@ import { ApiError } from "../middleware/errorHandler";
 import { getCurrentUserId } from "../services/currentUser";
 import { computeStatus, msRemaining } from "../services/expiration";
 import { createPublicToken, classifyDevice, hashVisitor } from "../utils/token";
-import { createShareSchema, shareListQuerySchema, openShareSchema } from "../utils/validation";
+import { createShareSchema, shareListQuerySchema, openShareSchema, updateLocationSchema } from "../utils/validation";
 
 const MAX_TOKEN_ATTEMPTS = 5;
 
@@ -124,6 +124,43 @@ export async function revokeShare(req: Request, res: Response) {
       shareId: share.id,
       type: "share_revoked",
       metadata: { placeName: share.placeName },
+    },
+  });
+
+  res.json({ share: creatorShareDto(updated, 0) });
+}
+
+export async function updateLocation(req: Request, res: Response) {
+  const { shareId } = req.params;
+  const data = updateLocationSchema.parse(req.body);
+  const userId = await getCurrentUserId();
+
+  const share = await prisma.share.findUnique({ where: { publicToken: shareId } });
+  if (!share) throw new ApiError(404, "Share not found.");
+  if (share.createdBy !== userId) throw new ApiError(403, "You cannot update this share.");
+
+  const status = computeStatus(share);
+  if (status !== "active") {
+    throw new ApiError(400, `Can't update location on a share that is ${status}.`);
+  }
+
+  const updated = await prisma.share.update({
+    where: { id: share.id },
+    data: {
+      placeName: data.placeName,
+      formattedAddress: data.formattedAddress,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      providerPlaceId: data.providerPlaceId || null,
+    },
+  });
+
+  await prisma.activityEvent.create({
+    data: {
+      userId,
+      shareId: share.id,
+      type: "location_updated",
+      metadata: { placeName: updated.placeName, previousPlaceName: share.placeName },
     },
   });
 

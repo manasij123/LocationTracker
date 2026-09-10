@@ -17,6 +17,14 @@ export const createShareSchema = z.object({
   message: "Either durationMinutes or expiresAt is required",
 });
 
+export const updateLocationSchema = z.object({
+  placeName: z.string().trim().min(1).max(200),
+  formattedAddress: z.string().trim().min(1).max(400),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  providerPlaceId: z.string().trim().max(200).optional().nullable(),
+});
+
 export const shareListQuerySchema = z.object({
   status: z.enum(["all", "active", "expired", "revoked"]).optional(),
   search: z.string().trim().max(200).optional(),

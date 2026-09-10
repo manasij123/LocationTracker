@@ -33,6 +33,18 @@ export function revokeShare(shareId: string) {
   return api.post<{ share: Share }>(`/shares/${shareId}/revoke`);
 }
 
+export interface UpdateLocationPayload {
+  placeName: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  providerPlaceId?: string | null;
+}
+
+export function updateShareLocation(shareId: string, payload: UpdateLocationPayload) {
+  return api.post<{ share: Share }>(`/shares/${shareId}/location`, payload);
+}
+
 export function getShareAnalytics(shareId: string) {
   return api.get<ShareAnalytics>(`/shares/${shareId}/analytics`);
 }

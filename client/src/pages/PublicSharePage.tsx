@@ -4,23 +4,29 @@ import MapView from "../components/MapView";
 import Skeleton from "../components/Skeleton";
 import { getPublicShare, recordShareOpen } from "../services/shares";
 import { useCountdown } from "../hooks/useCountdown";
+import { useToast } from "../hooks/useToast";
 import { formatClock } from "../utils/format";
 import { openDirections } from "../utils/directions";
 import { ApiRequestError } from "../services/api";
 import type { PublicShare } from "../types";
 
+const LOCATION_POLL_MS = 15_000;
+
 export default function PublicSharePage() {
   const { shareId } = useParams<{ shareId: string }>();
+  const { show } = useToast();
   const [share, setShare] = useState<PublicShare | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const openRecorded = useRef(false);
+  const knownPlaceName = useRef<string | null>(null);
 
   useEffect(() => {
     if (!shareId) return;
     getPublicShare(shareId)
       .then((d) => {
         setShare(d.share);
+        knownPlaceName.current = d.share.placeName;
         if (d.share.status === "active" && !openRecorded.current) {
           openRecorded.current = true;
           recordShareOpen(shareId).catch(() => {});
@@ -29,6 +35,28 @@ export default function PublicSharePage() {
       .catch((e) => setError(e instanceof ApiRequestError ? e.message : "This share link is invalid."))
       .finally(() => setLoading(false));
   }, [shareId]);
+
+  // While the share is active, poll so the creator moving to a new spot (same link) shows up
+  // here live — without the recipient needing to reload the page.
+  useEffect(() => {
+    if (!shareId || share?.status !== "active") return;
+
+    const interval = setInterval(() => {
+      getPublicShare(shareId)
+        .then((d) => {
+          setShare(d.share);
+          if (d.share.status === "active" && d.share.placeName !== knownPlaceName.current) {
+            knownPlaceName.current = d.share.placeName;
+            show(`Location updated: now at ${d.share.placeName}`, "info");
+          }
+        })
+        .catch(() => {
+          // A transient network hiccup shouldn't interrupt the page — just try again next tick.
+        });
+    }, LOCATION_POLL_MS);
+
+    return () => clearInterval(interval);
+  }, [shareId, share?.status, show]);
 
   const remainingMs = useCountdown(share?.status === "active" ? share.expiresAt : null);
 

@@ -4,7 +4,7 @@ import { getCurrentUserId } from "../services/currentUser";
 import { activityQuerySchema } from "../utils/validation";
 
 const typeFilterMap: Record<string, string[]> = {
-  shares: ["share_created"],
+  shares: ["share_created", "location_updated"],
   opens: ["link_opened"],
   expired: ["share_expired"],
   revoked: ["share_revoked"],

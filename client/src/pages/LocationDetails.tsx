@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import MapView from "../components/MapView";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmDialog from "../components/ConfirmDialog";
+import UpdateLocationSheet from "../components/UpdateLocationSheet";
 import Skeleton from "../components/Skeleton";
 import OpensLineChart from "../components/charts/OpensLineChart";
 import DeviceBreakdown from "../components/charts/DeviceBreakdown";
@@ -21,6 +22,7 @@ export default function LocationDetails() {
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   function load() {
     if (!shareId) return;
@@ -73,7 +75,10 @@ export default function LocationDetails() {
           <div className="mt-8"><StatusBadge status={share.status} /></div>
         </div>
         {share.status === "active" && (
-          <button className="btn btn-danger" onClick={() => setConfirmOpen(true)}>Revoke</button>
+          <div className="flex gap-8">
+            <button className="btn btn-secondary" onClick={() => setUpdateOpen(true)}>Update Location</button>
+            <button className="btn btn-danger" onClick={() => setConfirmOpen(true)}>Revoke</button>
+          </div>
         )}
       </div>
 
@@ -154,6 +159,18 @@ export default function LocationDetails() {
         loading={revoking}
         onConfirm={handleRevoke}
         onCancel={() => setConfirmOpen(false)}
+      />
+
+      <UpdateLocationSheet
+        open={updateOpen}
+        shareId={share.id}
+        currentPlaceName={share.placeName}
+        onClose={() => setUpdateOpen(false)}
+        onUpdated={() => {
+          setUpdateOpen(false);
+          show("Location updated — anyone with the link will see it move", "success");
+          load();
+        }}
       />
     </div>
   );

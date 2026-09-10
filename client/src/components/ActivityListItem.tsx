@@ -6,6 +6,7 @@ const meta: Record<ActivityEvent["type"], { icon: string; label: string; iconBg:
   link_opened: { icon: "👁", label: "Shared link opened", iconBg: "icon-bg-green" },
   share_expired: { icon: "⏰", label: "Share expired", iconBg: "icon-bg-gray" },
   share_revoked: { icon: "🚫", label: "Share revoked", iconBg: "icon-bg-red" },
+  location_updated: { icon: "🔄", label: "Location updated", iconBg: "icon-bg-blue" },
 };
 
 export default function ActivityListItem({ event }: { event: ActivityEvent }) {

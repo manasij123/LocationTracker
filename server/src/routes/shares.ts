@@ -9,6 +9,7 @@ router.post("/", createShareLimiter, asyncHandler(sharesController.createShare))
 router.get("/", asyncHandler(sharesController.listShares));
 router.get("/:shareId", asyncHandler(sharesController.getPublicShare));
 router.post("/:shareId/revoke", asyncHandler(sharesController.revokeShare));
+router.post("/:shareId/location", createShareLimiter, asyncHandler(sharesController.updateLocation));
 router.get("/:shareId/analytics", asyncHandler(sharesController.getAnalytics));
 router.post("/:shareId/open", openLimiter, asyncHandler(sharesController.recordOpen));
 

@@ -58,7 +58,7 @@ export interface ShareAnalytics {
   recentOpens: { openedAt: string; deviceType: DeviceType }[];
 }
 
-export type ActivityType = "share_created" | "link_opened" | "share_expired" | "share_revoked";
+export type ActivityType = "share_created" | "link_opened" | "share_expired" | "share_revoked" | "location_updated";
 
 export interface ActivityEvent {
   id: string;
