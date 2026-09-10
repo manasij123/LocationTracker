@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import LocationSearch from "./LocationSearch";
 import MapView from "./MapView";
 import { loadGoogleMaps } from "../utils/googleMapsLoader";
-import { resolveCurrentPosition } from "../utils/routeTimeline";
+import { resolveCurrentPosition, fetchRouteTimelineForSegment } from "../utils/routeTimeline";
 import { updateShareLocation } from "../services/shares";
 import { ApiRequestError } from "../services/api";
 import type { PlaceResult, Share } from "../types";
@@ -75,31 +75,15 @@ export default function UpdateLocationSheet({ open, shareId, share, onClose, onU
         setResolvedOrigin(origin);
 
         const destination = { lat: place.latitude, lng: place.longitude };
-        // Only safe to reference google.maps.TravelMode.* here, after the SDK has confirmed
-        // loaded — evaluating it any earlier (e.g. a module-scope map) would throw.
-        const travelModeEnum: Record<TravelModeKey, google.maps.TravelMode> = {
-          driving: google.maps.TravelMode.DRIVING,
-          walking: google.maps.TravelMode.WALKING,
-          bicycling: google.maps.TravelMode.BICYCLING,
-          transit: google.maps.TravelMode.TRANSIT,
-        };
 
+        // Reuses the exact same fetch (traffic-aware driving, best-of-alternatives transit)
+        // that the map itself uses to animate the glide, so the time shown here always matches
+        // what actually plays out — never a different, roughly-similar-looking estimate.
         return Promise.all(
-          MODE_OPTIONS.map(
-            (mode) =>
-              new Promise<[TravelModeKey, number | null]>((resolve) => {
-                service.route(
-                  { origin, destination, travelMode: travelModeEnum[mode.key] },
-                  (result, status) => {
-                    if (status === google.maps.DirectionsStatus.OK && result?.routes[0]) {
-                      const seconds = result.routes[0].legs.reduce((sum, leg) => sum + (leg.duration?.value ?? 0), 0);
-                      resolve([mode.key, seconds]);
-                    } else {
-                      resolve([mode.key, null]);
-                    }
-                  }
-                );
-              })
+          MODE_OPTIONS.map((mode) =>
+            fetchRouteTimelineForSegment(service, origin, destination, mode.key).then(
+              (timeline): [TravelModeKey, number | null] => [mode.key, timeline?.totalDurationSeconds ?? null]
+            )
           )
         );
       })

@@ -18,14 +18,29 @@ export interface RouteTimeline {
   totalDurationSeconds: number;
 }
 
-function totalRouteDistanceMeters(route: google.maps.DirectionsRoute): number {
-  return route.legs.reduce((sum, leg) => sum + (leg.distance?.value ?? 0), 0);
+/** Real duration for a route: traffic-adjusted (`duration_in_traffic`) when asked for and
+ *  available, else the plain historical-average `duration` — summed across legs (normally one). */
+function routeDurationSeconds(route: google.maps.DirectionsRoute, preferTraffic: boolean): number {
+  return route.legs.reduce((sum, leg) => {
+    const value = preferTraffic ? leg.duration_in_traffic?.value ?? leg.duration?.value : leg.duration?.value;
+    return sum + (value ?? 0);
+  }, 0);
+}
+
+function fastestRoute(routes: google.maps.DirectionsRoute[], preferTraffic: boolean): google.maps.DirectionsRoute {
+  return routes.reduce((best, route) =>
+    routeDurationSeconds(route, preferTraffic) < routeDurationSeconds(best, preferTraffic) ? route : best
+  );
 }
 
 function buildTimelineFromRoute(
   route: google.maps.DirectionsRoute,
   origin: google.maps.LatLngLiteral,
-  destination: google.maps.LatLngLiteral
+  destination: google.maps.LatLngLiteral,
+  /** Use this as the total instead of the natural sum of step durations (e.g. a traffic-
+   *  adjusted leg duration Directions only reports at the leg level, not per-step) — every
+   *  step's duration is rescaled proportionally so they still add up to it. */
+  totalDurationOverrideSeconds?: number
 ): RouteTimeline {
   const steps: RouteStep[] = [];
   for (const leg of route.legs) {
@@ -47,11 +62,17 @@ function buildTimelineFromRoute(
     const lastStep = steps[steps.length - 1];
     lastStep.path[lastStep.path.length - 1] = destination;
   }
-  const totalDurationSeconds = steps.reduce((sum, s) => sum + s.durationSeconds, 0) || 1;
-  return { steps, path: steps.flatMap((s) => s.path), totalDurationSeconds };
+  const naturalTotal = steps.reduce((sum, s) => sum + s.durationSeconds, 0) || 1;
+  if (totalDurationOverrideSeconds != null && totalDurationOverrideSeconds > 0) {
+    const scale = totalDurationOverrideSeconds / naturalTotal;
+    for (const s of steps) s.durationSeconds *= scale;
+    return { steps, path: steps.flatMap((s) => s.path), totalDurationSeconds: totalDurationOverrideSeconds };
+  }
+  return { steps, path: steps.flatMap((s) => s.path), totalDurationSeconds: naturalTotal };
 }
 
-/** Fetches the shortest (by distance) driving route as a single-step timeline — used when no
+/** Fetches the fastest driving route right now — with live traffic conditions factored in via
+ *  drivingOptions, same as what Google Maps' own "Fastest route now" reflects — used when no
  *  transit coverage exists for a pair of points. Resolves to null if no route is available. */
 export function fetchDrivingTimeline(
   service: google.maps.DirectionsService,
@@ -60,16 +81,42 @@ export function fetchDrivingTimeline(
 ): Promise<RouteTimeline | null> {
   return new Promise((resolve) => {
     service.route(
-      { origin, destination, travelMode: google.maps.TravelMode.DRIVING, provideRouteAlternatives: true },
+      {
+        origin,
+        destination,
+        travelMode: google.maps.TravelMode.DRIVING,
+        provideRouteAlternatives: true,
+        drivingOptions: { departureTime: new Date(), trafficModel: google.maps.TrafficModel.BEST_GUESS },
+      },
       (result, status) => {
         if (status !== google.maps.DirectionsStatus.OK || !result || result.routes.length === 0) {
           resolve(null);
           return;
         }
-        const shortest = result.routes.reduce((best, route) =>
-          totalRouteDistanceMeters(route) < totalRouteDistanceMeters(best) ? route : best
-        );
-        resolve(buildTimelineFromRoute(shortest, origin, destination));
+        const fastest = fastestRoute(result.routes, true);
+        resolve(buildTimelineFromRoute(fastest, origin, destination, routeDurationSeconds(fastest, true)));
+      }
+    );
+  });
+}
+
+/** Fetches the fastest public-transit route (bus/train/metro), trying every alternative Google
+ *  offers and keeping the quickest — a direct two-stop train can otherwise get passed over for
+ *  whatever route Directions returns first. Resolves to null if there's no transit coverage. */
+function fetchTransitTimeline(
+  service: google.maps.DirectionsService,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral
+): Promise<RouteTimeline | null> {
+  return new Promise((resolve) => {
+    service.route(
+      { origin, destination, travelMode: google.maps.TravelMode.TRANSIT, provideRouteAlternatives: true },
+      (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK || !result || result.routes.length === 0) {
+          resolve(null);
+          return;
+        }
+        resolve(buildTimelineFromRoute(fastestRoute(result.routes, false), origin, destination));
       }
     );
   });
@@ -77,23 +124,17 @@ export function fetchDrivingTimeline(
 
 /** Fetches a realistic, real-world-paced route between two points: walking + public transit
  *  (bus/train/metro) legs when available — exactly what Google Maps shows for "how long would
- *  this actually take" — falling back to the shortest driving route when there's no transit
- *  coverage for this pair (e.g. a short local hop, or a region with sparse transit data).
+ *  this actually take" — falling back to the fastest-right-now driving route when there's no
+ *  transit coverage for this pair (e.g. a short local hop, or a region with sparse transit data).
  *  Resolves to null (never rejects) only if neither mode returns anything usable. */
 export function fetchRouteTimeline(
   service: google.maps.DirectionsService,
   origin: google.maps.LatLngLiteral,
   destination: google.maps.LatLngLiteral
 ): Promise<RouteTimeline | null> {
-  return new Promise((resolve) => {
-    service.route({ origin, destination, travelMode: google.maps.TravelMode.TRANSIT }, (result, status) => {
-      if (status === google.maps.DirectionsStatus.OK && result && result.routes[0]) {
-        resolve(buildTimelineFromRoute(result.routes[0], origin, destination));
-        return;
-      }
-      fetchDrivingTimeline(service, origin, destination).then(resolve);
-    });
-  });
+  return fetchTransitTimeline(service, origin, destination).then(
+    (timeline) => timeline ?? fetchDrivingTimeline(service, origin, destination)
+  );
 }
 
 export function fetchSingleModeTimeline(
@@ -129,7 +170,7 @@ export function fetchRouteTimelineForSegment(
     case "bicycling":
       return fetchSingleModeTimeline(service, origin, destination, google.maps.TravelMode.BICYCLING);
     case "transit":
-      return fetchSingleModeTimeline(service, origin, destination, google.maps.TravelMode.TRANSIT);
+      return fetchTransitTimeline(service, origin, destination);
     default:
       return fetchRouteTimeline(service, origin, destination);
   }
