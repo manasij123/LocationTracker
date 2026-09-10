@@ -30,6 +30,63 @@ function buildMarkerHtml(label?: string): string {
   return `<div style="position:relative;">${labelHtml}${pulse}</div>`;
 }
 
+const PIN_SIZE = 26;
+
+function buildNumberedPinHtml(n: number, title: string): string {
+  return `<div class="numbered-pin" style="position:absolute; left:${-PIN_SIZE / 2}px; top:${-PIN_SIZE / 2}px;" title="${escapeHtml(title)}"><div class="numbered-pin-badge">${n}</div></div>`;
+}
+
+function totalRouteDistanceMeters(route: google.maps.DirectionsRoute): number {
+  return route.legs.reduce((sum, leg) => sum + (leg.distance?.value ?? 0), 0);
+}
+
+/** Fetches the shortest (by distance, not just fastest) driving route between two points,
+ *  with its ends pinned to the exact requested coordinates — Directions snaps the origin/
+ *  destination to the nearest routable road, which can leave a visible gap otherwise. Resolves
+ *  to null (never rejects) if no route is available, so callers can fall back gracefully. */
+function fetchRoutePath(
+  service: google.maps.DirectionsService,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral
+): Promise<google.maps.LatLngLiteral[] | null> {
+  return new Promise((resolve) => {
+    service.route(
+      { origin, destination, travelMode: google.maps.TravelMode.DRIVING, provideRouteAlternatives: true },
+      (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK || !result || result.routes.length === 0) {
+          resolve(null);
+          return;
+        }
+        const shortest = result.routes.reduce((best, route) =>
+          totalRouteDistanceMeters(route) < totalRouteDistanceMeters(best) ? route : best
+        );
+        const roadPath = shortest.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
+        resolve([origin, ...roadPath, destination]);
+      }
+    );
+  });
+}
+
+/** A small arrow symbol repeated along a polyline, animated by sliding its offset — gives the
+ *  route trail a "flowing" sense of motion/direction instead of sitting static on the map. */
+function buildFlowingRouteIcons(): google.maps.IconSequence[] {
+  return [
+    {
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 2.6,
+        strokeColor: "#ffffff",
+        strokeWeight: 1,
+        strokeOpacity: 0.9,
+        fillColor: ROUTE_COLOR,
+        fillOpacity: 1,
+      },
+      offset: "0%",
+      repeat: "60px",
+    },
+  ];
+}
+
 interface HtmlOverlayInstance {
   setMap(map: google.maps.Map | null): void;
   setPosition(position: google.maps.LatLngLiteral): void;
@@ -142,9 +199,11 @@ export default function MapView({
   const animationFrameRef = useRef<number | null>(null);
   const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const routePolylinesRef = useRef<google.maps.Polyline[]>([]);
-  const historyMarkersRef = useRef<google.maps.Marker[]>([]);
+  const historyMarkersRef = useRef<HtmlOverlayInstance[]>([]);
   const historyPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const lastHistoryKeyRef = useRef<string | null>(null);
+  const flowOffsetRef = useRef(0);
+  const flowAnimationFrameRef = useRef<number | null>(null);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -306,29 +365,26 @@ export default function MapView({
     }
 
     let cancelled = false;
-    directionsServiceRef.current.route(
-      { origin: from, destination: to, travelMode: google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (cancelled) return;
-        if (status === google.maps.DirectionsStatus.OK && result?.routes[0]) {
-          const path = result.routes[0].overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
-          routePolylinesRef.current.push(
-            new google.maps.Polyline({
-              path,
-              strokeColor: ROUTE_COLOR,
-              strokeWeight: 4,
-              strokeOpacity: 0.85,
-              map,
-            })
-          );
-          glideAlong(path);
-        } else {
-          // No road route available (or Directions API not reachable) — fall back to the
-          // previous straight-line glide so the marker still moves.
-          glideStraightLine(from);
-        }
+    fetchRoutePath(directionsServiceRef.current, from, to).then((path) => {
+      if (cancelled) return;
+      if (path) {
+        routePolylinesRef.current.push(
+          new google.maps.Polyline({
+            path,
+            strokeColor: ROUTE_COLOR,
+            strokeWeight: 4,
+            strokeOpacity: 0.75,
+            icons: buildFlowingRouteIcons(),
+            map,
+          })
+        );
+        glideAlong(path);
+      } else {
+        // No road route available (or Directions API not reachable) — fall back to the
+        // previous straight-line glide so the marker still moves.
+        glideStraightLine(from);
       }
-    );
+    });
 
     return () => {
       cancelled = true;
@@ -348,15 +404,15 @@ export default function MapView({
     lastHistoryKeyRef.current = key;
 
     historyMarkersRef.current.forEach((m) => m.setMap(null));
-    historyMarkersRef.current = history.map(
-      (point, i) =>
-        new google.maps.Marker({
-          position: { lat: point.latitude, lng: point.longitude },
-          map,
-          label: { text: String(i + 1), color: "#ffffff", fontWeight: "700" },
-          title: `Point ${i + 1}: ${point.placeName}`,
-        })
-    );
+    const Overlay = getHtmlOverlayClass();
+    historyMarkersRef.current = history.map((point, i) => {
+      const marker = new Overlay(
+        { lat: point.latitude, lng: point.longitude },
+        buildNumberedPinHtml(i + 1, `Point ${i + 1}: ${point.placeName}`)
+      );
+      marker.setMap(map);
+      return marker;
+    });
 
     historyPolylinesRef.current.forEach((p) => p.setMap(null));
     historyPolylinesRef.current = [];
@@ -373,18 +429,15 @@ export default function MapView({
     for (let i = 1; i < chain.length; i++) {
       const origin = chain[i - 1];
       const destination = chain[i];
-      service.route({ origin, destination, travelMode: google.maps.TravelMode.DRIVING }, (result, status) => {
+      fetchRoutePath(service, origin, destination).then((path) => {
         if (cancelled) return;
-        const path =
-          status === google.maps.DirectionsStatus.OK && result?.routes[0]
-            ? result.routes[0].overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }))
-            : [origin, destination]; // no road route available — draw a straight fallback segment
         historyPolylinesRef.current.push(
           new google.maps.Polyline({
-            path,
+            path: path || [origin, destination], // no road route available — straight fallback segment
             strokeColor: ROUTE_COLOR,
             strokeWeight: 4,
-            strokeOpacity: 0.85,
+            strokeOpacity: 0.75,
+            icons: buildFlowingRouteIcons(),
             map,
           })
         );
@@ -395,6 +448,29 @@ export default function MapView({
       cancelled = true;
     };
   }, [ready, history, latitude, longitude]);
+
+  // A single continuous animation loop drives the "flowing arrow" motion on every route
+  // polyline at once (live and historical), rather than each polyline running its own timer.
+  useEffect(() => {
+    if (!ready) return;
+    let frame: number;
+    function tick() {
+      flowOffsetRef.current = (flowOffsetRef.current + 0.7) % 100;
+      const offset = `${flowOffsetRef.current}%`;
+      for (const polyline of [...routePolylinesRef.current, ...historyPolylinesRef.current]) {
+        const icons = polyline.get("icons");
+        if (icons && icons[0]) {
+          icons[0].offset = offset;
+          polyline.set("icons", icons);
+        }
+      }
+      frame = requestAnimationFrame(tick);
+      flowAnimationFrameRef.current = frame;
+    }
+    frame = requestAnimationFrame(tick);
+    flowAnimationFrameRef.current = frame;
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
 
   // Fullscreen toggle: lock body scroll and force Google Maps to re-measure its container.
   useEffect(() => {
