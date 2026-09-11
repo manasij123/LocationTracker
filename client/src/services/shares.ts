@@ -60,6 +60,17 @@ export function getShareAnalytics(shareId: string) {
   return api.get<ShareAnalytics>(`/shares/${shareId}/analytics`);
 }
 
+export function startLiveShare(payload: { latitude: number; longitude: number }) {
+  return api.post<{ share: Share }>("/shares/live", payload);
+}
+
+export function sendLivePing(
+  shareId: string,
+  payload: { latitude: number; longitude: number; isWaitPoint?: boolean }
+) {
+  return api.post<{ share: Share; waitPointLabel: number | null }>(`/shares/${shareId}/live-ping`, payload);
+}
+
 export function recordShareOpen(shareId: string) {
   return api.post<{ recorded: boolean; status: string }>(`/shares/${shareId}/open`, {
     userAgentCategory: navigator.userAgent,

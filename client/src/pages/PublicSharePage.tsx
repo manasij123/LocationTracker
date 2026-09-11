@@ -11,6 +11,7 @@ import { ApiRequestError } from "../services/api";
 import type { PublicShare } from "../types";
 
 const LOCATION_POLL_MS = 15_000;
+const LIVE_POLL_MS = 4_000;
 
 export default function PublicSharePage() {
   const { shareId } = useParams<{ shareId: string }>();
@@ -41,11 +42,12 @@ export default function PublicSharePage() {
   useEffect(() => {
     if (!shareId || share?.status !== "active") return;
 
+    const intervalMs = share.isLive ? LIVE_POLL_MS : LOCATION_POLL_MS;
     const interval = setInterval(() => {
       getPublicShare(shareId)
         .then((d) => {
           setShare(d.share);
-          if (d.share.status === "active" && d.share.placeName !== knownPlaceName.current) {
+          if (!d.share.isLive && d.share.status === "active" && d.share.placeName !== knownPlaceName.current) {
             knownPlaceName.current = d.share.placeName;
             show(`Location updated: now at ${d.share.placeName}`, "info");
           }
@@ -53,10 +55,10 @@ export default function PublicSharePage() {
         .catch(() => {
           // A transient network hiccup shouldn't interrupt the page — just try again next tick.
         });
-    }, LOCATION_POLL_MS);
+    }, intervalMs);
 
     return () => clearInterval(interval);
-  }, [shareId, share?.status, show]);
+  }, [shareId, share?.status, share?.isLive, show]);
 
   const remainingMs = useCountdown(share?.status === "active" ? share.expiresAt : null);
 
@@ -114,8 +116,10 @@ export default function PublicSharePage() {
               latitude={share.latitude}
               longitude={share.longitude}
               placeName={share.placeName}
-              label={`ME AT: ${share.placeName}`}
+              label={share.isLive ? "🔴 LIVE LOCATION" : `ME AT: ${share.placeName}`}
               history={share.locationHistory}
+              liveTrack={share.liveTrack}
+              isLiveTracking={share.isLive}
               overrideDurationSeconds={share.locationHistory?.[share.locationHistory.length - 1]?.travelDurationSeconds ?? null}
               overrideTravelMode={share.locationHistory?.[share.locationHistory.length - 1]?.travelMode ?? null}
               allowFullscreen
@@ -130,12 +134,20 @@ export default function PublicSharePage() {
               <div className="text-muted mt-8" style={{ fontSize: 13.5 }}>{share.formattedAddress}</div>
             </div>
 
-            <div className="card card-pad mt-16" style={{ textAlign: "center" }}>
-              <div className="text-muted" style={{ fontSize: 13 }}>Available for</div>
-              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 4 }}>
-                {formatClock(remainingMs)}
+            {share.isLive ? (
+              <div className="card card-pad mt-16" style={{ textAlign: "center" }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 15, color: "#dc2626" }}>
+                  <span className="live-pulse-dot" /> LIVE — updating in real time
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="card card-pad mt-16" style={{ textAlign: "center" }}>
+                <div className="text-muted" style={{ fontSize: 13 }}>Available for</div>
+                <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", marginTop: 4 }}>
+                  {formatClock(remainingMs)}
+                </div>
+              </div>
+            )}
 
             <button
               className="btn btn-primary btn-lg btn-block mt-16"

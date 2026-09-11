@@ -42,6 +42,19 @@ export const updateLocationSchema = z.object({
   fromLongitude: z.number().min(-180).max(180).optional(),
 });
 
+export const startLiveShareSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+
+export const livePingSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  /** True if the creator's browser has determined they've stayed near this spot for a while —
+   *  recorded as a numbered "wait point" instead of just another trail point. */
+  isWaitPoint: z.boolean().optional(),
+});
+
 export const shareListQuerySchema = z.object({
   status: z.enum(["all", "active", "expired", "revoked"]).optional(),
   search: z.string().trim().max(200).optional(),

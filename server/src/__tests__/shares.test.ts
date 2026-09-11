@@ -297,4 +297,64 @@ describe("SpotShare API", () => {
       .send({ placeName: "Z", formattedAddress: "W", latitude: 2, longitude: 2 });
     expect(updateRes.status).toBe(400);
   });
+
+  it("starts a live share, records pings and wait points, then stops it via revoke", async () => {
+    const startRes = await request(app)
+      .post("/api/shares/live")
+      .send({ latitude: 22.5, longitude: 88.3 });
+    expect(startRes.status).toBe(201);
+    const shareId = startRes.body.share.id as string;
+    expect(startRes.body.share.isLive).toBe(true);
+    expect(startRes.body.share.placeName).toBe("Live Location");
+
+    const ping1 = await request(app)
+      .post(`/api/shares/${shareId}/live-ping`)
+      .send({ latitude: 22.51, longitude: 88.31 });
+    expect(ping1.status).toBe(201);
+    expect(ping1.body.waitPointLabel).toBeNull();
+    expect(ping1.body.share.latitude).toBe(22.51);
+
+    const waitPing = await request(app)
+      .post(`/api/shares/${shareId}/live-ping`)
+      .send({ latitude: 22.52, longitude: 88.32, isWaitPoint: true });
+    expect(waitPing.status).toBe(201);
+    expect(waitPing.body.waitPointLabel).toBe(1);
+
+    const secondWaitPing = await request(app)
+      .post(`/api/shares/${shareId}/live-ping`)
+      .send({ latitude: 22.6, longitude: 88.4, isWaitPoint: true });
+    expect(secondWaitPing.body.waitPointLabel).toBe(2);
+
+    const publicRes = await request(app).get(`/api/shares/${shareId}`);
+    expect(publicRes.status).toBe(200);
+    expect(publicRes.body.share.isLive).toBe(true);
+    expect(publicRes.body.share.liveTrack).toHaveLength(3);
+    expect(publicRes.body.share.liveTrack[1].waitPointLabel).toBe(1);
+    expect(publicRes.body.share.liveTrack[2].waitPointLabel).toBe(2);
+
+    const revokeRes = await request(app).post(`/api/shares/${shareId}/revoke`);
+    expect(revokeRes.status).toBe(200);
+
+    const afterStop = await request(app).get(`/api/shares/${shareId}`);
+    expect(afterStop.body.share.status).toBe("revoked");
+    expect(afterStop.body.share).not.toHaveProperty("latitude");
+    expect(afterStop.body.share).not.toHaveProperty("liveTrack");
+
+    const pingAfterStop = await request(app)
+      .post(`/api/shares/${shareId}/live-ping`)
+      .send({ latitude: 22.7, longitude: 88.5 });
+    expect(pingAfterStop.status).toBe(400);
+  });
+
+  it("rejects a live ping on a normal (non-live) share", async () => {
+    const createRes = await request(app)
+      .post("/api/shares")
+      .send({ placeName: "Normal", formattedAddress: "Addr", latitude: 22.5, longitude: 88.3, durationMinutes: 30 });
+    const shareId = createRes.body.share.id as string;
+
+    const res = await request(app)
+      .post(`/api/shares/${shareId}/live-ping`)
+      .send({ latitude: 22.51, longitude: 88.31 });
+    expect(res.status).toBe(400);
+  });
 });

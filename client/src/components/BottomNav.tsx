@@ -13,7 +13,7 @@ interface BottomNavProps {
 
 export default function BottomNav({ onOpenMore }: BottomNavProps) {
   const location = useLocation();
-  const moreActive = ["/analytics", "/settings"].some((p) => location.pathname.startsWith(p));
+  const moreActive = ["/analytics", "/settings", "/my-location"].some((p) => location.pathname.startsWith(p));
 
   return (
     <nav className="bottom-nav">

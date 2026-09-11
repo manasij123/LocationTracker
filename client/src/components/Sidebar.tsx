@@ -4,6 +4,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: "🏠", end: true },
   { to: "/share-location", label: "Share Location", icon: "📍" },
   { to: "/locations", label: "My Locations", icon: "🗺" },
+  { to: "/my-location", label: "My Current Location", icon: "📡" },
   { to: "/activity", label: "Activity", icon: "📊" },
   { to: "/analytics", label: "Analytics", icon: "📈" },
   { to: "/settings", label: "Settings", icon: "⚙" },

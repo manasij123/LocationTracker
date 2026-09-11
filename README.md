@@ -3,8 +3,10 @@
 Create and share temporary pickup / meeting-point locations. A creator picks a
 place on a map, sets how long it stays available, and generates a link. Anyone
 who opens the link sees the place on an interactive map with a live countdown
-and one-tap directions. SpotShare never reads or spoofs anyone's real GPS —
-every shared location is a manually chosen point.
+and one-tap directions. Every shared location is a manually chosen point by
+default — SpotShare never reads a creator's real GPS for these — except for
+the separate, explicitly opt-in "My Current Location" live-tracking flow (see
+below), where reading real GPS is the whole point of the feature.
 
 The UI is a mobile-first, Android-app-styled web app (bottom navigation +
 drawer on phones, a fixed sidebar on desktop/tablet) built as an installable
@@ -114,6 +116,27 @@ within that one API, no separate one to enable) — without it, the marker
 still moves (falls back to a fixed-time straight-line glide), just
 without the route-following, realistically-paced animation.
 
+## My Current Location (live tracking)
+
+A separate flow from manually-picked spot shares: "My Current Location" (between "My Locations"
+and "Activity" in the sidebar) lets a creator share their real, continuously-updating GPS
+position from a "Share Realtime Location" button, generating a link in the same style as a
+normal share. It's browser-tab-based — the creator's own tab has to stay open and
+`navigator.geolocation.watchPosition` running, since browsers can't do real background GPS
+tracking without a native wrapper (out of scope here) — and keeps running across in-app page
+navigation (its state lives in a `LiveShareProvider` mounted once at the app root), stopping
+only when the creator presses "Stop Sharing" (or the safety-net 12-hour expiry lapses). The
+recipient's page polls much more frequently for a live share (every 4s vs. the normal 15s) and
+shows a "🔴 Live" indicator instead of a countdown.
+
+As the creator moves, their actual raw GPS fixes (not a fetched/estimated route — no Directions
+API calls at all for this, unlike manually-updated shares) are drawn directly as a growing red
+trail, throttled to roughly one point per ~5 seconds or ~8 meters moved. If they stay within
+about 30 meters of one spot for 5+ minutes, that spot is auto-detected client-side and recorded
+as a numbered "Wait Point" ("W.P:1", "W.P:2", ...). Both the trail and wait points are persisted
+server-side (`LiveTrackPoint` rows) so a recipient reloading the page still sees the full
+accumulated history, the same way a manual share's location history survives reloads.
+
 ## Deploying (hosting) SpotShare
 
 There are three pieces to put somewhere: a **Postgres database**, the
@@ -211,6 +234,9 @@ better, which matters once the backend itself is on a free tier that sleeps
   `active` only while `now < expiresAt` and it hasn't been revoked.
 - **Privacy**: link-open analytics record a device category (Android / iPhone
   / Desktop / Other) and a one-way hash of `(shareId, IP, user agent)` — never
-  raw IP addresses, precise visitor location, or other personal data.
+  raw IP addresses, precise visitor location, or other personal data. Real
+  GPS is only ever read for the explicitly opt-in "My Current Location" live
+  share, started by an explicit button press, stopped by an explicit button
+  press, and never running otherwise.
 - **Share tokens** are short, unambiguous, high-entropy public IDs (nanoid,
   custom alphabet) — practically impossible to guess.

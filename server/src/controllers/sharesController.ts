@@ -4,7 +4,14 @@ import { ApiError } from "../middleware/errorHandler";
 import { getCurrentUserId } from "../services/currentUser";
 import { computeStatus, msRemaining } from "../services/expiration";
 import { createPublicToken, classifyDevice, hashVisitor } from "../utils/token";
-import { createShareSchema, shareListQuerySchema, openShareSchema, updateLocationSchema } from "../utils/validation";
+import {
+  createShareSchema,
+  shareListQuerySchema,
+  openShareSchema,
+  updateLocationSchema,
+  startLiveShareSchema,
+  livePingSchema,
+} from "../utils/validation";
 
 const MAX_TOKEN_ATTEMPTS = 5;
 
@@ -96,11 +103,17 @@ export async function getPublicShare(req: Request, res: Response) {
   const { shareId } = req.params;
   const share = await prisma.share.findUnique({
     where: { publicToken: shareId },
-    include: { locationHistory: { orderBy: { createdAt: "asc" } } },
+    include: {
+      locationHistory: { orderBy: { createdAt: "asc" } },
+      liveTrackPoints: { orderBy: { recordedAt: "asc" } },
+    },
   });
   if (!share) throw new ApiError(404, "This share link is invalid.");
 
-  res.json({ share: publicShareDto(share, share.locationHistory), serverTime: new Date().toISOString() });
+  res.json({
+    share: publicShareDto(share, share.locationHistory, share.liveTrackPoints),
+    serverTime: new Date().toISOString(),
+  });
 }
 
 export async function revokeShare(req: Request, res: Response) {
@@ -187,13 +200,91 @@ export async function updateLocation(req: Request, res: Response) {
   res.json({ share: creatorShareDto(updated, 0) });
 }
 
+export async function startLiveShare(req: Request, res: Response) {
+  const data = startLiveShareSchema.parse(req.body);
+  const userId = await getCurrentUserId();
+
+  const publicToken = await generateUniqueToken();
+  // Safety-net expiry in case the creator forgets to hit "Stop sharing" (or just closes the
+  // tab) — far longer than any real live-sharing session should run; "stop" is what normally
+  // ends it, via the existing revoke endpoint.
+  const expiresAt = new Date(Date.now() + 12 * 60 * 60_000);
+
+  const share = await prisma.share.create({
+    data: {
+      publicToken,
+      placeName: "Live Location",
+      formattedAddress: "Live location — updates in real time",
+      latitude: data.latitude,
+      longitude: data.longitude,
+      isLive: true,
+      expiresAt,
+      createdBy: userId,
+    },
+  });
+
+  await prisma.activityEvent.create({
+    data: {
+      userId,
+      shareId: share.id,
+      type: "share_created",
+      metadata: { placeName: share.placeName, isLive: true },
+    },
+  });
+
+  res.status(201).json({ share: creatorShareDto(share, 0) });
+}
+
+export async function postLivePing(req: Request, res: Response) {
+  const { shareId } = req.params;
+  const data = livePingSchema.parse(req.body);
+  const userId = await getCurrentUserId();
+
+  const share = await prisma.share.findUnique({ where: { publicToken: shareId } });
+  if (!share) throw new ApiError(404, "Share not found.");
+  if (share.createdBy !== userId) throw new ApiError(403, "You cannot update this share.");
+  if (!share.isLive) throw new ApiError(400, "This share is not a live-tracking share.");
+
+  const status = computeStatus(share);
+  if (status !== "active") {
+    throw new ApiError(400, `Can't record a location ping on a share that is ${status}.`);
+  }
+
+  let waitPointLabel: number | null = null;
+  if (data.isWaitPoint) {
+    const priorWaitPoints = await prisma.liveTrackPoint.count({
+      where: { shareId: share.id, waitPointLabel: { not: null } },
+    });
+    waitPointLabel = priorWaitPoints + 1;
+  }
+
+  await prisma.liveTrackPoint.create({
+    data: {
+      shareId: share.id,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      waitPointLabel,
+    },
+  });
+
+  const updated = await prisma.share.update({
+    where: { id: share.id },
+    data: { latitude: data.latitude, longitude: data.longitude },
+  });
+
+  res.status(201).json({ share: creatorShareDto(updated, 0), waitPointLabel });
+}
+
 export async function getAnalytics(req: Request, res: Response) {
   const { shareId } = req.params;
   const userId = await getCurrentUserId();
 
   const share = await prisma.share.findUnique({
     where: { publicToken: shareId },
-    include: { locationHistory: { orderBy: { createdAt: "asc" } } },
+    include: {
+      locationHistory: { orderBy: { createdAt: "asc" } },
+      liveTrackPoints: { orderBy: { recordedAt: "asc" } },
+    },
   });
   if (!share) throw new ApiError(404, "Share not found.");
   if (share.createdBy !== userId) throw new ApiError(403, "You cannot view this analytics.");
@@ -220,7 +311,7 @@ export async function getAnalytics(req: Request, res: Response) {
   const dailyBuckets = buildDailyBuckets(opens.map((o) => o.openedAt), 14);
 
   res.json({
-    share: creatorShareDto(share, totalOpens, share.locationHistory),
+    share: creatorShareDto(share, totalOpens, share.locationHistory, share.liveTrackPoints),
     totalOpens,
     uniqueVisitors,
     lastOpened,
@@ -301,6 +392,7 @@ type ShareRow = {
   createdAt: Date;
   expiresAt: Date;
   revokedAt: Date | null;
+  isLive: boolean;
 };
 
 type LocationHistoryRow = {
@@ -311,6 +403,13 @@ type LocationHistoryRow = {
   createdAt: Date;
   travelDurationSeconds: number | null;
   travelMode: string | null;
+};
+
+type LiveTrackPointRow = {
+  latitude: number;
+  longitude: number;
+  recordedAt: Date;
+  waitPointLabel: number | null;
 };
 
 function historyDto(history: LocationHistoryRow[]) {
@@ -325,7 +424,21 @@ function historyDto(history: LocationHistoryRow[]) {
   }));
 }
 
-export function creatorShareDto(share: ShareRow, linkOpens: number, history?: LocationHistoryRow[]) {
+function liveTrackDto(points: LiveTrackPointRow[]) {
+  return points.map((p) => ({
+    latitude: p.latitude,
+    longitude: p.longitude,
+    recordedAt: p.recordedAt,
+    waitPointLabel: p.waitPointLabel,
+  }));
+}
+
+export function creatorShareDto(
+  share: ShareRow,
+  linkOpens: number,
+  history?: LocationHistoryRow[],
+  liveTrack?: LiveTrackPointRow[]
+) {
   const status = computeStatus(share as any);
   return {
     id: share.publicToken,
@@ -341,11 +454,13 @@ export function creatorShareDto(share: ShareRow, linkOpens: number, history?: Lo
     remainingMs: status === "active" ? msRemaining(share as any) : 0,
     linkOpens,
     shareUrl: `/share/${share.publicToken}`,
+    isLive: share.isLive,
     locationHistory: history ? historyDto(history) : [],
+    liveTrack: liveTrack ? liveTrackDto(liveTrack) : [],
   };
 }
 
-export function publicShareDto(share: ShareRow, history?: LocationHistoryRow[]) {
+export function publicShareDto(share: ShareRow, history?: LocationHistoryRow[], liveTrack?: LiveTrackPointRow[]) {
   const status = computeStatus(share as any);
   const base = {
     id: share.publicToken,
@@ -353,6 +468,7 @@ export function publicShareDto(share: ShareRow, history?: LocationHistoryRow[]) 
     formattedAddress: share.formattedAddress,
     status,
     expiresAt: share.expiresAt,
+    isLive: share.isLive,
   };
   if (status !== "active") {
     return base;
@@ -364,5 +480,6 @@ export function publicShareDto(share: ShareRow, history?: LocationHistoryRow[]) 
     note: share.note,
     remainingMs: msRemaining(share as any),
     locationHistory: historyDto(history || []),
+    liveTrack: liveTrackDto(liveTrack || []),
   };
 }

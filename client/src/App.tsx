@@ -5,6 +5,7 @@ import ShareLocation from "./pages/ShareLocation";
 import ShareResult from "./pages/ShareResult";
 import MyLocations from "./pages/MyLocations";
 import LocationDetails from "./pages/LocationDetails";
+import MyCurrentLocation from "./pages/MyCurrentLocation";
 import Activity from "./pages/Activity";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/share-location/result/:shareId" element={<ShareResult />} />
           <Route path="/locations" element={<MyLocations />} />
           <Route path="/locations/:shareId" element={<LocationDetails />} />
+          <Route path="/my-location" element={<MyCurrentLocation />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />

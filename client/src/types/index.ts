@@ -19,6 +19,13 @@ export interface LocationHistoryPoint {
   travelMode: string | null;
 }
 
+export interface LiveTrackPoint {
+  latitude: number;
+  longitude: number;
+  recordedAt: string;
+  waitPointLabel: number | null;
+}
+
 export interface Share {
   id: string;
   placeName: string;
@@ -33,7 +40,9 @@ export interface Share {
   remainingMs: number;
   linkOpens: number;
   shareUrl: string;
+  isLive: boolean;
   locationHistory: LocationHistoryPoint[];
+  liveTrack: LiveTrackPoint[];
 }
 
 export interface PublicShare {
@@ -42,11 +51,13 @@ export interface PublicShare {
   formattedAddress: string;
   status: ShareStatus;
   expiresAt: string;
+  isLive: boolean;
   latitude?: number;
   longitude?: number;
   note?: string | null;
   remainingMs?: number;
   locationHistory?: LocationHistoryPoint[];
+  liveTrack?: LiveTrackPoint[];
 }
 
 export interface DeviceBreakdownEntry {

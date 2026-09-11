@@ -51,19 +51,40 @@ model Share {
   createdAt       DateTime    @default(now())
   expiresAt       DateTime
   revokedAt       DateTime?
+  /// True for a "My Current Location" live-tracking share (continuous GPS pings from the
+  /// creator's own open tab) as opposed to a manually-picked spot share. Live shares use
+  /// liveTrackPoints instead of locationHistory for their trail.
+  isLive          Boolean     @default(false)
 
   createdBy String
   creator   User   @relation(fields: [createdBy], references: [id])
 
-  opens           ShareOpen[]
-  activityEvents  ActivityEvent[]
-  locationHistory LocationHistory[]
+  opens            ShareOpen[]
+  activityEvents   ActivityEvent[]
+  locationHistory  LocationHistory[]
+  liveTrackPoints  LiveTrackPoint[]
 
   @@index([publicToken])
   @@index([createdBy])
   @@index([expiresAt])
   @@index([createdAt])
   @@index([status])
+}
+
+/// One row per recorded GPS fix during a live-tracking share — the raw, real path the creator
+/// actually walked/drove, not a route estimate. A point with waitPointLabel set marks a spot
+/// where the creator stayed put for a while (5+ minutes), numbered in the order they occurred.
+model LiveTrackPoint {
+  id             String   @id @default(cuid())
+  shareId        String
+  share          Share    @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  latitude       Float
+  longitude      Float
+  recordedAt     DateTime @default(now())
+  waitPointLabel Int?
+
+  @@index([shareId])
+  @@index([recordedAt])
 }
 
 /// One row per past point a share pointed at before an update moved it — lets a recipient

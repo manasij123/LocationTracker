@@ -14,6 +14,7 @@ const ROUTE_COLOR = "#ef4444";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const MOVE_ANIMATION_MS = 1800;
+const LIVE_PING_GLIDE_MS = 1200;
 const DOT_SIZE = 22;
 
 function easeInOutQuad(t: number): number {
@@ -40,6 +41,10 @@ const PIN_SIZE = 26;
 
 function buildNumberedPinHtml(n: number, title: string): string {
   return `<div class="numbered-pin" style="position:absolute; left:${-PIN_SIZE / 2}px; top:${-PIN_SIZE / 2}px;" title="${escapeHtml(title)}"><div class="numbered-pin-badge">${n}</div></div>`;
+}
+
+function buildWaitPointPinHtml(n: number): string {
+  return `<div class="numbered-pin wp-pin" style="position:absolute; left:-32px; top:${-PIN_SIZE / 2}px;" title="Wait Point ${n}"><div class="numbered-pin-badge wp-pin-badge">W.P:${n}</div></div>`;
 }
 
 /** A small arrow symbol repeated along a polyline, animated by sliding its offset — gives the
@@ -137,6 +142,12 @@ interface HistoryPoint {
   updatedAt?: string;
 }
 
+interface LiveTrackPoint {
+  latitude: number;
+  longitude: number;
+  waitPointLabel?: number | null;
+}
+
 interface MapViewProps {
   latitude: number;
   longitude: number;
@@ -147,6 +158,17 @@ interface MapViewProps {
    *  numbered pins (1, 2, 3, ...) with muted connector lines, so the whole journey stays
    *  visible on every page load, not just during a live transition. */
   history?: HistoryPoint[];
+  /** Raw GPS fixes for a "My Current Location" live-tracking share, oldest first. Drawn
+   *  directly as a growing red trail with no Directions API route-fetching — these are the
+   *  actual points walked/driven, not a route estimate — plus numbered "W.P:N" pins wherever
+   *  the creator stayed in one place for a while. */
+  liveTrack?: LiveTrackPoint[];
+  /** True for a "My Current Location" live-tracking share — the marker position updates from
+   *  frequent raw GPS pings rather than manual location picks, so each move is a quick, simple
+   *  point-to-point glide (no Directions API route-fetching/animation, which would be wasteful
+   *  and slow for such short, frequent segments — the actual path is already drawn by
+   *  `liveTrack` from the real GPS points). */
+  isLiveTracking?: boolean;
   /** Creator-supplied travel time (seconds) for the current/live transition — i.e. the move
    *  that just brought the share to (latitude, longitude) — overriding the auto-estimated
    *  Google Maps duration for that specific glide. */
@@ -168,6 +190,8 @@ export default function MapView({
   placeName,
   label,
   history = [],
+  liveTrack = [],
+  isLiveTracking = false,
   overrideDurationSeconds = null,
   overrideTravelMode = null,
   height = 320,
@@ -199,6 +223,8 @@ export default function MapView({
   const liveSegmentActiveRef = useRef(false);
   const userInteractingRef = useRef(false);
   const pendingResumeElapsedMsRef = useRef<number | null>(null);
+  const liveTrackPolylineRef = useRef<google.maps.Polyline | null>(null);
+  const liveWaitPointMarkersRef = useRef<HtmlOverlayInstance[]>([]);
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -284,6 +310,10 @@ export default function MapView({
       historyPolylinesRef.current = [];
       liveSegmentPolylineRef.current?.setMap(null);
       liveSegmentPolylineRef.current = null;
+      liveTrackPolylineRef.current?.setMap(null);
+      liveTrackPolylineRef.current = null;
+      liveWaitPointMarkersRef.current.forEach((m) => m.setMap(null));
+      liveWaitPointMarkersRef.current = [];
       if (flowAnimationFrameRef.current) cancelAnimationFrame(flowAnimationFrameRef.current);
       activeFlowPolylineRef.current = null;
       mapRef.current = null;
@@ -329,6 +359,34 @@ export default function MapView({
     // static line, so this would otherwise just sit on top of it as a stale duplicate.
     liveSegmentPolylineRef.current?.setMap(null);
     liveSegmentPolylineRef.current = null;
+
+    // Live-tracking shares move from frequent raw GPS pings, not manual location picks — the
+    // real path is already drawn by the `liveTrack` effect from the actual points, so here we
+    // just glide the dot itself, quickly and directly, with no Directions API call per ping.
+    if (isLiveTracking) {
+      liveSegmentActiveRef.current = false;
+      if (!from) {
+        overlay.setPosition(to);
+        circle.setCenter(to);
+        map.setCenter(to);
+      } else if (from.lat !== to.lat || from.lng !== to.lng) {
+        const startTime = performance.now();
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - startTime) / LIVE_PING_GLIDE_MS);
+          const point = { lat: from.lat + (to.lat - from.lat) * t, lng: from.lng + (to.lng - from.lng) * t };
+          overlay.setPosition(point);
+          circle.setCenter(point);
+          if (!userInteractingRef.current) map.setCenter(point);
+          if (t < 1) {
+            animationFrameRef.current = requestAnimationFrame(tick);
+          } else {
+            animationFrameRef.current = null;
+          }
+        };
+        animationFrameRef.current = requestAnimationFrame(tick);
+      }
+      return;
+    }
 
     if (!from || (from.lat === to.lat && from.lng === to.lng)) {
       liveSegmentActiveRef.current = false;
@@ -458,7 +516,7 @@ export default function MapView({
     return () => {
       cancelled = true;
     };
-  }, [latitude, longitude, label, zoom, ready, overrideDurationSeconds, overrideTravelMode]);
+  }, [latitude, longitude, label, zoom, ready, overrideDurationSeconds, overrideTravelMode, isLiveTracking]);
 
   // Render the share's past points (server-persisted, so this survives reloads) as numbered
   // pins, each consecutive pair connected by the same bold, road-following route the live
@@ -523,6 +581,37 @@ export default function MapView({
       cancelled = true;
     };
   }, [ready, history, latitude, longitude]);
+
+  // Draws a "My Current Location" live-tracking share's raw GPS trail as a growing red line —
+  // no Directions API route-fetching, since these are the actual points walked/driven, not an
+  // estimate — plus a numbered "W.P:N" pin at each point the creator stayed put for a while.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+
+    const path = liveTrack.map((p) => ({ lat: p.latitude, lng: p.longitude }));
+
+    if (!liveTrackPolylineRef.current) {
+      liveTrackPolylineRef.current = new google.maps.Polyline({
+        path: [],
+        strokeColor: ROUTE_COLOR,
+        strokeWeight: 4,
+        strokeOpacity: 0.85,
+        map,
+      });
+    }
+    liveTrackPolylineRef.current.setPath(path);
+
+    liveWaitPointMarkersRef.current.forEach((m) => m.setMap(null));
+    const Overlay = getHtmlOverlayClass();
+    liveWaitPointMarkersRef.current = liveTrack
+      .filter((p) => p.waitPointLabel != null)
+      .map((p) => {
+        const marker = new Overlay({ lat: p.latitude, lng: p.longitude }, buildWaitPointPinHtml(p.waitPointLabel as number));
+        marker.setMap(map);
+        return marker;
+      });
+  }, [ready, liveTrack]);
 
   // Plays the flowing-arrow animation on a single polyline (the most recent segment) for a
   // few seconds, then stops — a brief highlight of "this is what just moved", not a

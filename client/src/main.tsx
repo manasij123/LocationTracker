@@ -4,12 +4,15 @@ import "./styles/globals.css";
 import App from "./App";
 import { ThemeProvider } from "./hooks/useTheme";
 import { ToastProvider } from "./hooks/useToast";
+import { LiveShareProvider } from "./hooks/useLiveShare";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider>
       <ToastProvider>
-        <App />
+        <LiveShareProvider>
+          <App />
+        </LiveShareProvider>
       </ToastProvider>
     </ThemeProvider>
   </React.StrictMode>

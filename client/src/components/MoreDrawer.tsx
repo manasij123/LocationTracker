@@ -21,6 +21,10 @@ export default function MoreDrawer({ open, onClose }: MoreDrawerProps) {
             <div className="brand-tagline">Temporary location sharing</div>
           </div>
         </div>
+        <NavLink to="/my-location" className="sidebar-link" onClick={onClose}>
+          <span className="icon">📡</span>
+          <span>My Current Location</span>
+        </NavLink>
         <NavLink to="/analytics" className="sidebar-link" onClick={onClose}>
           <span className="icon">📈</span>
           <span>Analytics</span>

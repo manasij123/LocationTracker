@@ -30,3 +30,11 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+export const livePingLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many location pings. Please slow down." },
+});
