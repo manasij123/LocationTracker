@@ -15,7 +15,7 @@ export default function MoreDrawer({ open, onClose }: MoreDrawerProps) {
       <div className="drawer-overlay" onClick={onClose} />
       <div className="drawer-sheet">
         <div className="sidebar-brand">
-          <div className="brand-mark">📍</div>
+          <div className="brand-mark"><img src="/logo.svg" alt="SpotShare" /></div>
           <div>
             <div className="brand-name">SpotShare</div>
             <div className="brand-tagline">Temporary location sharing</div>

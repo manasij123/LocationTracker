@@ -14,7 +14,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="brand-mark">📍</div>
+        <div className="brand-mark"><img src="/logo.svg" alt="SpotShare" /></div>
         <div>
           <div className="brand-name">SpotShare</div>
           <div className="brand-tagline">Temporary location sharing</div>

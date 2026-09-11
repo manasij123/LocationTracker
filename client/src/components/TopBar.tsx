@@ -6,7 +6,7 @@ export default function TopBar({ onOpenMenu }: TopBarProps) {
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <div className="brand-mark">📍</div>
+        <div className="brand-mark"><img src="/logo.svg" alt="SpotShare" /></div>
         SpotShare
       </div>
       <button className="icon-btn" onClick={onOpenMenu} aria-label="Open menu">
