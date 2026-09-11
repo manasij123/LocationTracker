@@ -12,6 +12,7 @@ import { useCountdown } from "../hooks/useCountdown";
 import { useToast } from "../hooks/useToast";
 import { ApiRequestError } from "../services/api";
 import { formatClock, formatDateTime, formatRelativeTime } from "../utils/format";
+import { downloadLiveTrackReport } from "../utils/liveTrackReport";
 import type { ShareAnalytics } from "../types";
 
 export default function LocationDetails() {
@@ -71,13 +72,17 @@ export default function LocationDetails() {
     <div>
       <div className="flex justify-between items-center" style={{ flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h1 className="page-title">📍 {share.placeName}</h1>
+          <h1 className="page-title">{share.isLive ? "📡" : "📍"} {share.placeName}</h1>
           <div className="mt-8"><StatusBadge status={share.status} /></div>
         </div>
         {share.status === "active" && (
           <div className="flex gap-8">
-            <button className="btn btn-secondary" onClick={() => setUpdateOpen(true)}>Update Location</button>
-            <button className="btn btn-danger" onClick={() => setConfirmOpen(true)}>Revoke</button>
+            {!share.isLive && (
+              <button className="btn btn-secondary" onClick={() => setUpdateOpen(true)}>Update Location</button>
+            )}
+            <button className="btn btn-danger" onClick={() => setConfirmOpen(true)}>
+              {share.isLive ? "Stop Sharing" : "Revoke"}
+            </button>
           </div>
         )}
       </div>
@@ -88,11 +93,42 @@ export default function LocationDetails() {
           longitude={share.longitude}
           placeName={share.placeName}
           history={share.locationHistory}
+          liveTrack={share.liveTrack}
+          isLiveTracking={share.isLive && share.status === "active"}
           overrideDurationSeconds={share.locationHistory?.[share.locationHistory.length - 1]?.travelDurationSeconds ?? null}
           overrideTravelMode={share.locationHistory?.[share.locationHistory.length - 1]?.travelMode ?? null}
           height={280}
         />
       </div>
+
+      {share.liveTrack.length > 0 && (
+        <div className="section card card-pad">
+          <div className="flex justify-between items-center" style={{ flexWrap: "wrap", gap: 10 }}>
+            <h2 className="section-title">
+              {share.status === "active" ? "🔴 Live Trail" : "Recorded Trail"}
+            </h2>
+            <button className="btn btn-secondary btn-sm" onClick={() => downloadLiveTrackReport(share)}>
+              ⬇ Download Track Report
+            </button>
+          </div>
+          <div className="grid grid-2 mt-12" style={{ gap: 10 }}>
+            <div>
+              <div className="stat-value" style={{ fontSize: 22 }}>{share.liveTrack.length}</div>
+              <div className="text-faint" style={{ fontSize: 11.5 }}>Recorded Points</div>
+            </div>
+            <div>
+              <div className="stat-value" style={{ fontSize: 22 }}>
+                {share.liveTrack.filter((p) => p.waitPointLabel != null).length}
+              </div>
+              <div className="text-faint" style={{ fontSize: 11.5 }}>Wait Points</div>
+            </div>
+          </div>
+          <div className="text-muted mt-12" style={{ fontSize: 12.5 }}>
+            First point: {formatDateTime(share.liveTrack[0].recordedAt)} · Last point:{" "}
+            {formatDateTime(share.liveTrack[share.liveTrack.length - 1].recordedAt)}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-2 section">
         <div className="card card-pad">
@@ -160,9 +196,13 @@ export default function LocationDetails() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Revoke this location?"
-        description="This link will stop working immediately."
-        confirmLabel="Revoke"
+        title={share.isLive ? "Stop sharing your location?" : "Revoke this location?"}
+        description={
+          share.isLive
+            ? "The link will immediately stop showing your location to anyone who has it. Your recorded trail stays available here."
+            : "This link will stop working immediately."
+        }
+        confirmLabel={share.isLive ? "Stop Sharing" : "Revoke"}
         danger
         loading={revoking}
         onConfirm={handleRevoke}

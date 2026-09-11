@@ -137,6 +137,23 @@ as a numbered "Wait Point" ("W.P:1", "W.P:2", ...). Both the trail and wait poin
 server-side (`LiveTrackPoint` rows) so a recipient reloading the page still sees the full
 accumulated history, the same way a manual share's location history survives reloads.
 
+This doubles as a personal safety record, not just a live-sharing convenience: pressing "Stop
+Sharing" only revokes the *public* link (recipients immediately lose access, same as revoking
+any other share) — it does not delete the recorded trail. The creator can still open that share
+from **My Locations** afterwards (even once it's expired/revoked) to see the full historical
+trail and wait points on the map, and download a plain-text report of it (timestamped points,
+wait points, and approximate distance covered) via **Download Track Report** — something that
+can be handed to someone else (e.g. shown to police) as a record of where the creator actually
+was, without needing them to have been watching the live link the whole time. That said, this
+only tracks for as long as the creator's browser tab stays open (see the note above) — it's not
+a substitute for a native background-tracking app, which remains a separate, future project.
+
+Live-track points aren't kept forever, though: a scheduled server-side job
+(`server/src/services/liveTrackRetention.ts`, runs once at startup and then every 24h) purges
+`LiveTrackPoint` rows older than `LIVE_TRACK_RETENTION_DAYS` (default 60 days) — long enough to
+outlive any real emergency's relevant window, without accumulating GPS history indefinitely. It
+only ever deletes old trail points, never the `Share` record itself.
+
 ## Deploying (hosting) SpotShare
 
 There are three pieces to put somewhere: a **Postgres database**, the
@@ -178,6 +195,8 @@ better, which matters once the backend itself is on a free tier that sleeps
     needed — this is what the API's CORS check allows)
   - `MAP_PROVIDER` — `mock` (offline, no key) or `nominatim` (live OSM search)
   - `DEMO_USER_EMAIL` / `DEMO_USER_NAME` — optional, cosmetic only
+  - `LIVE_TRACK_RETENTION_DAYS` — optional, how long live-share GPS trails are
+    kept before being purged (default `60`)
 - After the first deploy, run the seed script once if you want demo data:
   `npx tsx prisma/seed.ts` (via the platform's shell/console).
 - Note your backend's public URL, e.g. `https://spotshare-api.onrender.com`.

@@ -41,7 +41,14 @@ export default function ShareCard({ share, onRevoke }: ShareCardProps) {
   return (
     <div className="card card-pad" style={{ cursor: "pointer" }} onClick={() => navigate(`/locations/${share.id}`)}>
       <div className="flex justify-between items-center">
-        <div style={{ fontWeight: 700, fontSize: 15 }}>📍 {share.placeName}</div>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>
+          {share.isLive ? "📡" : "📍"} {share.placeName}
+          {share.isLive && share.status === "active" && (
+            <span style={{ marginLeft: 8, color: "#dc2626", fontSize: 11.5, fontWeight: 800 }}>
+              <span className="live-pulse-dot" style={{ marginRight: 4 }} />LIVE
+            </span>
+          )}
+        </div>
         <StatusBadge status={share.status} />
       </div>
       <div className="text-muted mt-8" style={{ fontSize: 12.5 }}>{share.formattedAddress}</div>
