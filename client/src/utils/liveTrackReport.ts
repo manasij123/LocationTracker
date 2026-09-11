@@ -1,6 +1,10 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share as NativeShare } from "@capacitor/share";
 import { getPublicOrigin } from "./publicOrigin";
+import { isNativeApp } from "./nativeGeolocation";
+import reportLogoUrl from "../assets/report-logo.png";
 import type { Share, LiveTrackPoint } from "../types";
 
 // Matches the wait-point radius used while recording (useLiveShare.tsx) — used here only to
@@ -58,6 +62,27 @@ function googleMapsDirectionsUrl(a: { latitude: number; longitude: number }, b: 
 
 function timeGapMs(a: { recordedAt: string }, b: { recordedAt: string }): number {
   return new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime();
+}
+
+// Loaded once and reused across reports — turns the bundled brand mark into a data URL jsPDF can
+// embed directly, without re-fetching it on every download.
+let logoDataUrlPromise: Promise<string | null> | null = null;
+function loadReportLogo(): Promise<string | null> {
+  if (!logoDataUrlPromise) {
+    logoDataUrlPromise = fetch(reportLogoUrl)
+      .then((res) => res.blob())
+      .then(
+        (blob) =>
+          new Promise<string | null>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          })
+      )
+      .catch(() => null);
+  }
+  return logoDataUrlPromise;
 }
 
 interface WaitPointSummary {
@@ -139,14 +164,15 @@ function computeGapSummaries(points: LiveTrackPoint[]): GapSummary[] {
  * that exact coordinate, so a reader can open it with one tap rather than typing coordinates in
  * by hand.
  */
-export function downloadLiveTrackReportPdf(share: Share) {
+export async function downloadLiveTrackReportPdf(share: Share) {
   const points = share.liveTrack;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  const HEADER_HEIGHT = 26;
 
   doc.setFillColor(...COLOR_LIVE);
-  doc.rect(0, 0, pageWidth, 26, "F");
+  doc.rect(0, 0, pageWidth, HEADER_HEIGHT, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
@@ -154,6 +180,14 @@ export function downloadLiveTrackReportPdf(share: Share) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.text("A safety record of a real-time shared location", 14, 19);
+
+  const logoDataUrl = await loadReportLogo();
+  if (logoDataUrl) {
+    const logoSize = 16;
+    const logoX = pageWidth - 14 - logoSize;
+    const logoY = (HEADER_HEIGHT - logoSize) / 2;
+    doc.addImage(logoDataUrl, "PNG", logoX, logoY, logoSize, logoSize);
+  }
 
   doc.setTextColor(...COLOR_TEXT);
   let y = 36;
@@ -227,6 +261,7 @@ export function downloadLiveTrackReportPdf(share: Share) {
         if (data.section === "body") {
           data.cell.styles.fillColor = COLOR_GRAY_BG;
           data.cell.styles.textColor = COLOR_TEXT;
+          if (data.column.index === 4) data.cell.text = [];
         }
       },
       didDrawCell: (data) => {
@@ -275,6 +310,7 @@ export function downloadLiveTrackReportPdf(share: Share) {
         if (data.section === "body") {
           data.cell.styles.fillColor = COLOR_AMBER_BG;
           data.cell.styles.textColor = COLOR_AMBER_TEXT;
+          if (data.column.index === 5) data.cell.text = [];
         }
       },
       didDrawCell: (data) => {
@@ -319,9 +355,12 @@ export function downloadLiveTrackReportPdf(share: Share) {
       "Open in Maps",
     ]),
     didParseCell: (data) => {
-      if (data.section === "body" && points[data.row.index].waitPointLabel != null) {
-        data.cell.styles.fillColor = COLOR_AMBER_BG;
-        data.cell.styles.textColor = COLOR_AMBER_TEXT;
+      if (data.section === "body") {
+        if (points[data.row.index].waitPointLabel != null) {
+          data.cell.styles.fillColor = COLOR_AMBER_BG;
+          data.cell.styles.textColor = COLOR_AMBER_TEXT;
+        }
+        if (data.column.index === 5) data.cell.text = [];
       }
     },
     didDrawCell: (data) => {
@@ -343,5 +382,22 @@ export function downloadLiveTrackReportPdf(share: Share) {
     doc.text(`Report generated ${new Date().toLocaleString()} — Page ${i} of ${pageCount}`, 14, pageHeight - 8);
   }
 
-  doc.save(`spotshare-live-track-${share.id}.pdf`);
+  const fileName = `spotshare-live-track-${share.id}.pdf`;
+
+  // A plain `doc.save()` builds an <a download> link and clicks it — that's a normal browser
+  // download, but a Capacitor WebView has no "Downloads" surface for it to land in, so the click
+  // silently does nothing. On native, write the PDF into the app's cache instead and hand it to
+  // the OS share sheet, which lets the user save it to Files/Drive or share it directly.
+  if (isNativeApp) {
+    const base64Data = doc.output("datauristring").split(",")[1];
+    const { uri } = await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Cache });
+    await NativeShare.share({
+      title: "SpotShare Live Track Report",
+      url: uri,
+      dialogTitle: "Save or share this report",
+    });
+    return;
+  }
+
+  doc.save(fileName);
 }
