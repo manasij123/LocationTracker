@@ -12,7 +12,7 @@ import { useCountdown } from "../hooks/useCountdown";
 import { useToast } from "../hooks/useToast";
 import { ApiRequestError } from "../services/api";
 import { formatClock, formatDateTime, formatRelativeTime } from "../utils/format";
-import { downloadLiveTrackReport } from "../utils/liveTrackReport";
+import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
 import type { ShareAnalytics } from "../types";
 
 export default function LocationDetails() {
@@ -107,8 +107,8 @@ export default function LocationDetails() {
             <h2 className="section-title">
               {share.status === "active" ? "🔴 Live Trail" : "Recorded Trail"}
             </h2>
-            <button className="btn btn-secondary btn-sm" onClick={() => downloadLiveTrackReport(share)}>
-              ⬇ Download Track Report
+            <button className="btn btn-secondary btn-sm" onClick={() => downloadLiveTrackReportPdf(share)}>
+              ⬇ Download Report (PDF)
             </button>
           </div>
           <div className="grid grid-2 mt-12" style={{ gap: 10 }}>

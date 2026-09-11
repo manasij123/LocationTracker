@@ -3,7 +3,7 @@ import MapView from "../components/MapView";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveShare } from "../hooks/useLiveShare";
 import { useToast } from "../hooks/useToast";
-import { downloadLiveTrackReport } from "../utils/liveTrackReport";
+import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
 
 export default function MyCurrentLocation() {
   const { status, error, share, coords, start, stop } = useLiveShare();
@@ -105,10 +105,10 @@ export default function MyCurrentLocation() {
               <button className="btn btn-secondary btn-block" onClick={nativeShare}>Share</button>
               <button
                 className="btn btn-secondary btn-block"
-                onClick={() => downloadLiveTrackReport(share)}
+                onClick={() => downloadLiveTrackReportPdf(share)}
                 disabled={share.liveTrack.length === 0}
               >
-                ⬇ Download Track Report
+                ⬇ Download Report (PDF)
               </button>
               <button className="btn btn-danger btn-block" onClick={() => setStopConfirmOpen(true)}>
                 Stop Sharing
