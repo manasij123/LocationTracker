@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { generalLimiter } from "./middleware/rateLimiter";
 import locationsRouter from "./routes/locations";
@@ -12,6 +13,7 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
+  app.use(compression());
   app.use(
     cors({
       origin: process.env.CLIENT_ORIGIN?.split(",") || "*",

@@ -135,7 +135,11 @@ This repo is wired for **Pattern A** already. Steps:
 Create a free Postgres instance on [Neon](https://neon.tech) or
 [Supabase](https://supabase.com) (or use your host's managed Postgres, e.g.
 Render/Railway Postgres). Copy the connection string it gives you — that's
-your `DATABASE_URL`.
+your `DATABASE_URL`. On Neon specifically, copy the **pooled** connection
+string (its host contains `-pooler`), not the direct one — it reconnects
+faster and handles a burst of requests right after a cold start much
+better, which matters once the backend itself is on a free tier that sleeps
+(see the note below).
 
 ### 2. Backend (e.g. Render / Railway / Fly.io)
 
@@ -179,6 +183,15 @@ your `DATABASE_URL`.
 
 ### Notes
 
+- **Free-tier cold starts**: Render's free web services sleep after 15
+  minutes with no traffic, and the next request has to wait 10-60+ seconds
+  for it to wake back up — this is almost always what "the app feels slow"
+  turns out to be, not the app itself. A free, zero-code fix is an external
+  uptime pinger (e.g. [cron-job.org](https://cron-job.org),
+  [UptimeRobot](https://uptimerobot.com)) hitting `/api/health` every 10-14
+  minutes so the service never fully idles. The other options are a paid
+  Render instance (doesn't sleep at all) or moving the API to a platform
+  without a sleep model.
 - Both HTTPS (required for the PWA service worker and for `navigator.share`/
   clipboard APIs to work reliably) and a custom domain are usually free
   add-ons on the platforms above.
