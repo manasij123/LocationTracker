@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AlertTriangle, Radio, MapPin, Circle, Download } from "lucide-react";
 import MapView from "../components/MapView";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -55,7 +56,7 @@ export default function LocationDetails() {
   if (error) {
     return (
       <div className="empty-state">
-        <div className="empty-icon">⚠️</div>
+        <div className="empty-icon"><AlertTriangle size={40} /></div>
         <div className="empty-title">{error}</div>
         <button className="btn btn-secondary" onClick={() => navigate("/locations")}>Back to My Locations</button>
       </div>
@@ -73,7 +74,9 @@ export default function LocationDetails() {
     <div>
       <div className="flex justify-between items-center" style={{ flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h1 className="page-title">{share.isLive ? "📡" : "📍"} {share.placeName}</h1>
+          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {share.isLive ? <Radio size={22} /> : <MapPin size={22} />} {share.placeName}
+          </h1>
           <div className="mt-8"><StatusBadge status={share.status} /></div>
         </div>
         {share.status === "active" && (
@@ -105,11 +108,21 @@ export default function LocationDetails() {
       {share.liveTrack.length > 0 && (
         <div className="section card card-pad">
           <div className="flex justify-between items-center" style={{ flexWrap: "wrap", gap: 10 }}>
-            <h2 className="section-title">
-              {share.status === "active" ? "🔴 Live Trail" : "Recorded Trail"}
+            <h2 className="section-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {share.status === "active" ? (
+                <>
+                  <Circle size={12} fill="#dc2626" color="#dc2626" /> Live Trail
+                </>
+              ) : (
+                "Recorded Trail"
+              )}
             </h2>
-            <button className="btn btn-secondary btn-sm" onClick={() => downloadLiveTrackReportPdf(share)}>
-              ⬇ Download Report (PDF)
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => downloadLiveTrackReportPdf(share)}
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <Download size={14} /> Download Report (PDF)
             </button>
           </div>
           <div className="grid grid-2 mt-12" style={{ gap: 10 }}>

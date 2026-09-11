@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
+import { MapPin, Radio, Eye, Clock, Map, TrendingUp, ClipboardList, Inbox } from "lucide-react";
 import StatCard from "../components/StatCard";
 import ActivityListItem from "../components/ActivityListItem";
 import Skeleton from "../components/Skeleton";
@@ -43,7 +45,7 @@ export default function Dashboard() {
     <div>
       <div className="flex justify-between items-center" style={{ flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 className="page-title">{greeting()} 👋</h1>
+          <h1 className="page-title">{greeting()}</h1>
           <p className="page-subtitle">Manage your shared locations</p>
         </div>
         <button className="btn btn-primary btn-lg" onClick={() => navigate("/share-location")}>
@@ -60,10 +62,10 @@ export default function Dashboard() {
       <div className="grid grid-stats mt-24">
         {stats ? (
           <>
-            <StatCard label="Total Shares" value={stats.totalShares} icon="📍" iconBg="blue" trend={stats.trends.shares} trendLabel="from last month" />
-            <StatCard label="Active Shares" value={stats.activeShares} icon="🟢" iconBg="green" trendLabel="Currently available" />
-            <StatCard label="Link Opens" value={stats.totalOpens} icon="👁" iconBg="amber" trend={stats.trends.opens} trendLabel="from last month" />
-            <StatCard label="Expired Shares" value={stats.expiredShares} icon="⏰" iconBg="gray" trendLabel="Completed" />
+            <StatCard label="Total Shares" value={stats.totalShares} icon={MapPin} iconBg="blue" trend={stats.trends.shares} trendLabel="from last month" />
+            <StatCard label="Active Shares" value={stats.activeShares} icon={Radio} iconBg="green" trendLabel="Currently available" />
+            <StatCard label="Link Opens" value={stats.totalOpens} icon={Eye} iconBg="amber" trend={stats.trends.opens} trendLabel="from last month" />
+            <StatCard label="Expired Shares" value={stats.expiredShares} icon={Clock} iconBg="gray" trendLabel="Completed" />
           </>
         ) : (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={120} radius={16} />)
@@ -117,10 +119,10 @@ export default function Dashboard() {
           <h2 className="section-title">Quick Actions</h2>
         </div>
         <div className="grid grid-stats">
-          <QuickAction icon="📍" label="Share Location" onClick={() => navigate("/share-location")} highlight />
-          <QuickAction icon="🗺" label="My Locations" onClick={() => navigate("/locations")} />
-          <QuickAction icon="📈" label="View Analytics" onClick={() => navigate("/analytics")} />
-          <QuickAction icon="📋" label="Activity Log" onClick={() => navigate("/activity")} />
+          <QuickAction icon={MapPin} label="Share Location" onClick={() => navigate("/share-location")} highlight />
+          <QuickAction icon={Map} label="My Locations" onClick={() => navigate("/locations")} />
+          <QuickAction icon={TrendingUp} label="View Analytics" onClick={() => navigate("/analytics")} />
+          <QuickAction icon={ClipboardList} label="Activity Log" onClick={() => navigate("/activity")} />
         </div>
       </div>
 
@@ -136,7 +138,7 @@ export default function Dashboard() {
             </div>
           ) : activity.length === 0 ? (
             <div className="empty-state" style={{ padding: "24px 12px" }}>
-              <div className="empty-icon">📭</div>
+              <div className="empty-icon"><Inbox size={40} /></div>
               <div className="empty-title">No activity yet</div>
               <p style={{ fontSize: 13 }}>Share a location to see activity here.</p>
             </div>
@@ -161,7 +163,7 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function QuickAction({ icon, label, onClick, highlight }: { icon: string; label: string; onClick: () => void; highlight?: boolean }) {
+function QuickAction({ icon: Icon, label, onClick, highlight }: { icon: LucideIcon; label: string; onClick: () => void; highlight?: boolean }) {
   return (
     <button
       className="card"
@@ -177,7 +179,7 @@ function QuickAction({ icon, label, onClick, highlight }: { icon: string; label:
         background: highlight ? "var(--color-primary-light)" : undefined,
       }}
     >
-      <span style={{ fontSize: 22 }}>{icon}</span>
+      <Icon size={22} />
       <span style={{ fontSize: 13.5, fontWeight: 700, textAlign: "left" }}>{label}</span>
     </button>
   );

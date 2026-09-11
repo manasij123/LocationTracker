@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TrendingUp } from "lucide-react";
 import ShareActivityChart from "../components/charts/ShareActivityChart";
 import DeviceBreakdown from "../components/charts/DeviceBreakdown";
 import Skeleton from "../components/Skeleton";
@@ -35,7 +36,7 @@ export default function Analytics() {
 
       {stats && stats.totalShares === 0 && (
         <div className="empty-state">
-          <div className="empty-icon">📈</div>
+          <div className="empty-icon"><TrendingUp size={40} /></div>
           <div className="empty-title">Not enough activity to show analytics.</div>
           <p style={{ fontSize: 13.5 }}>Share a location to start collecting data.</p>
         </div>

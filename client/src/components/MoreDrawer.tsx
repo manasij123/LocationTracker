@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { Radio, TrendingUp, Settings as SettingsIcon } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import BrandLogo from "./BrandLogo";
 
@@ -23,15 +24,15 @@ export default function MoreDrawer({ open, onClose }: MoreDrawerProps) {
           </div>
         </div>
         <NavLink to="/my-location" className="sidebar-link" onClick={onClose}>
-          <span className="icon">📡</span>
+          <span className="icon"><Radio size={18} /></span>
           <span>My Current Location</span>
         </NavLink>
         <NavLink to="/analytics" className="sidebar-link" onClick={onClose}>
-          <span className="icon">📈</span>
+          <span className="icon"><TrendingUp size={18} /></span>
           <span>Analytics</span>
         </NavLink>
         <NavLink to="/settings" className="sidebar-link" onClick={onClose}>
-          <span className="icon">⚙</span>
+          <span className="icon"><SettingsIcon size={18} /></span>
           <span>Settings</span>
         </NavLink>
 

@@ -1,20 +1,23 @@
+import type { LucideIcon } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
+
 interface StatCardProps {
   label: string;
   value: string | number;
-  icon: string;
+  icon: LucideIcon;
   iconBg: "blue" | "green" | "amber" | "gray" | "red";
   trend?: number;
   trendLabel?: string;
 }
 
-export default function StatCard({ label, value, icon, iconBg, trend, trendLabel }: StatCardProps) {
+export default function StatCard({ label, value, icon: Icon, iconBg, trend, trendLabel }: StatCardProps) {
   return (
     <div className="card stat-card">
       <div className="stat-top">
-        <div className={`stat-icon icon-bg-${iconBg}`}>{icon}</div>
+        <div className={`stat-icon icon-bg-${iconBg}`}><Icon size={18} /></div>
         {typeof trend === "number" && (
           <span className={`stat-trend ${trend >= 0 ? "up" : "down"}`}>
-            {trend >= 0 ? "▲" : "▼"} {Math.abs(trend)}%
+            {trend >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />} {Math.abs(trend)}%
           </span>
         )}
       </div>

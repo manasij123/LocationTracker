@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { MapPin } from "lucide-react";
 import LocationSearch from "../components/LocationSearch";
 import DurationPicker from "../components/DurationPicker";
 import MapView from "../components/MapView";
@@ -64,7 +65,9 @@ export default function ShareLocation() {
           <MapView latitude={place.latitude} longitude={place.longitude} placeName={place.name} height={300} />
           <div className="card card-pad mt-12 flex justify-between items-center">
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14.5 }}>📍 {place.name}</div>
+              <div style={{ fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}>
+                <MapPin size={15} /> {place.name}
+              </div>
               <div className="text-muted" style={{ fontSize: 12.5, marginTop: 2 }}>{place.formattedAddress}</div>
             </div>
             <button className="btn btn-outline btn-sm" onClick={() => setPlace(null)}>Change</button>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MapIcon } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { loadGoogleMaps } from "../utils/googleMapsLoader";
 import { GOOGLE_MAPS_DARK_STYLE } from "../utils/googleMapDarkStyle";
@@ -720,7 +721,7 @@ export default function MapView({
     >
       {loadError && (
         <div className="flex-col gap-8" style={{ height: "100%", alignItems: "center", justifyContent: "center", padding: 16, textAlign: "center" }}>
-          <span style={{ fontSize: 28 }}>🗺️</span>
+          <MapIcon size={28} />
           <p className="text-muted" style={{ fontSize: 13 }}>Couldn't load the map.</p>
         </div>
       )}

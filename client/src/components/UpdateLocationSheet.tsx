@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import { Car, TrainFront, PersonStanding, Bike, MapPin } from "lucide-react";
 import LocationSearch from "./LocationSearch";
 import MapView from "./MapView";
 import { loadGoogleMaps } from "../utils/googleMapsLoader";
@@ -9,11 +11,11 @@ import type { PlaceResult, Share } from "../types";
 
 type TravelModeKey = "driving" | "walking" | "bicycling" | "transit";
 
-const MODE_OPTIONS: { key: TravelModeKey; label: string; icon: string }[] = [
-  { key: "driving", label: "Driving", icon: "🚗" },
-  { key: "transit", label: "Transit", icon: "🚆" },
-  { key: "walking", label: "Walking", icon: "🚶" },
-  { key: "bicycling", label: "Cycling", icon: "🚲" },
+const MODE_OPTIONS: { key: TravelModeKey; label: string; icon: LucideIcon }[] = [
+  { key: "driving", label: "Driving", icon: Car },
+  { key: "transit", label: "Transit", icon: TrainFront },
+  { key: "walking", label: "Walking", icon: PersonStanding },
+  { key: "bicycling", label: "Cycling", icon: Bike },
 ];
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -162,7 +164,9 @@ export default function UpdateLocationSheet({ open, shareId, share, onClose, onU
         {place && (
           <div className="mt-16">
             <MapView latitude={place.latitude} longitude={place.longitude} placeName={place.name} height={200} interactive={false} />
-            <div className="mt-8" style={{ fontWeight: 700, fontSize: 14 }}>📍 {place.name}</div>
+            <div className="mt-8" style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+              <MapPin size={15} /> {place.name}
+            </div>
             <div className="text-muted" style={{ fontSize: 12.5 }}>{place.formattedAddress}</div>
 
             <label className="field-label mt-16">How are you getting there?</label>
@@ -183,8 +187,9 @@ export default function UpdateLocationSheet({ open, shareId, share, onClose, onU
                     key={mode.key}
                     className={`chip${selectedMode === mode.key ? " selected" : ""}`}
                     onClick={() => setSelectedMode(mode.key)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
                   >
-                    {mode.icon} {formatDuration(seconds)}
+                    <mode.icon size={14} /> {formatDuration(seconds)}
                   </button>
                 );
               })}

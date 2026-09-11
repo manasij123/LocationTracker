@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Ban, Clock, MapPin, Compass } from "lucide-react";
 import MapView from "../components/MapView";
 import Skeleton from "../components/Skeleton";
 import BrandLogo from "../components/BrandLogo";
@@ -90,7 +91,7 @@ export default function PublicSharePage() {
 
         {!loading && (error || !share) && (
           <div className="empty-state">
-            <div className="empty-icon">🚫</div>
+            <div className="empty-icon"><Ban size={40} /></div>
             <div className="empty-title">This share link is invalid.</div>
             <p style={{ fontSize: 13.5 }}>Double-check the link, or ask for a new one.</p>
           </div>
@@ -98,14 +99,14 @@ export default function PublicSharePage() {
 
         {!loading && share && share.status === "revoked" && (
           <div className="empty-state">
-            <div className="empty-icon">🚫</div>
+            <div className="empty-icon"><Ban size={40} /></div>
             <div className="empty-title">This location link is no longer available.</div>
           </div>
         )}
 
         {!loading && share && share.status === "expired" && (
           <div className="empty-state">
-            <div className="empty-icon">⏰</div>
+            <div className="empty-icon"><Clock size={40} /></div>
             <div className="empty-title">Location Expired</div>
             <p style={{ fontSize: 13.5 }}>This shared location is no longer active.</p>
           </div>
@@ -131,7 +132,9 @@ export default function PublicSharePage() {
               <div className="text-faint" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>
                 Me at
               </div>
-              <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>📍 {share.placeName}</div>
+              <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                <MapPin size={16} /> {share.placeName}
+              </div>
               <div className="text-muted mt-8" style={{ fontSize: 13.5 }}>{share.formattedAddress}</div>
             </div>
 
@@ -153,8 +156,9 @@ export default function PublicSharePage() {
             <button
               className="btn btn-primary btn-lg btn-block mt-16"
               onClick={() => openDirections(share.latitude as number, share.longitude as number, share.placeName)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
             >
-              🧭 Get Directions
+              <Compass size={18} /> Get Directions
             </button>
 
             {share.note && (

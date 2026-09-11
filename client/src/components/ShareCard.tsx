@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { Radio, MapPin } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import { formatDateTime, formatTime } from "../utils/format";
 import { useToast } from "../hooks/useToast";
@@ -42,8 +43,8 @@ export default function ShareCard({ share, onRevoke }: ShareCardProps) {
   return (
     <div className="card card-pad" style={{ cursor: "pointer" }} onClick={() => navigate(`/locations/${share.id}`)}>
       <div className="flex justify-between items-center">
-        <div style={{ fontWeight: 700, fontSize: 15 }}>
-          {share.isLive ? "📡" : "📍"} {share.placeName}
+        <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 6 }}>
+          {share.isLive ? <Radio size={15} /> : <MapPin size={15} />} {share.placeName}
           {share.isLive && share.status === "active" && (
             <span style={{ marginLeft: 8, color: "#dc2626", fontSize: 11.5, fontWeight: 800 }}>
               <span className="live-pulse-dot" style={{ marginRight: 4 }} />LIVE

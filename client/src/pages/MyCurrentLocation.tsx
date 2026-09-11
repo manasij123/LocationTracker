@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Radio, Circle, Download } from "lucide-react";
 import MapView from "../components/MapView";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveShare } from "../hooks/useLiveShare";
@@ -53,7 +54,9 @@ export default function MyCurrentLocation() {
 
   return (
     <div>
-      <h1 className="page-title">📡 My Current Location</h1>
+      <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Radio size={22} /> My Current Location
+      </h1>
       <p className="text-muted mt-8" style={{ fontSize: 14 }}>
         {isNativeApp
           ? "Share your live location with anyone — the link updates continuously as you move, even while the app is in the background or your screen is off."
@@ -62,7 +65,9 @@ export default function MyCurrentLocation() {
 
       {!isSharing && (
         <div className="card card-pad section" style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 36 }}>🔵</div>
+          <div style={{ display: "flex", justifyContent: "center", color: "var(--color-primary)" }}>
+            <Circle size={36} fill="currentColor" />
+          </div>
           <h2 className="section-title mt-12">Not currently sharing</h2>
           <p className="text-muted mt-8" style={{ fontSize: 13.5 }}>
             {isNativeApp
@@ -111,8 +116,9 @@ export default function MyCurrentLocation() {
                 className="btn btn-secondary btn-block"
                 onClick={() => downloadLiveTrackReportPdf(share)}
                 disabled={share.liveTrack.length === 0}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
               >
-                ⬇ Download Report (PDF)
+                <Download size={16} /> Download Report (PDF)
               </button>
               <button className="btn btn-danger btn-block" onClick={() => setStopConfirmOpen(true)}>
                 Stop Sharing

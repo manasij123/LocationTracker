@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Inbox } from "lucide-react";
 import ActivityListItem from "../components/ActivityListItem";
 import Skeleton from "../components/Skeleton";
 import { getActivity } from "../services/activity";
@@ -67,7 +68,7 @@ export default function Activity() {
         )}
         {events && events.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">📭</div>
+            <div className="empty-icon"><Inbox size={40} /></div>
             <div className="empty-title">No activity yet.</div>
           </div>
         )}

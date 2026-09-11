@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Search, MapIcon } from "lucide-react";
 import ShareCard from "../components/ShareCard";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Skeleton from "../components/Skeleton";
@@ -71,7 +72,7 @@ export default function MyLocations() {
 
       <div className="section">
         <div className="search-input-wrap">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon"><Search size={17} /></span>
           <input className="input" placeholder="Search locations..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
@@ -100,7 +101,7 @@ export default function MyLocations() {
           </>
         ) : shares && shares.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">🗺</div>
+            <div className="empty-icon"><MapIcon size={40} /></div>
             <div className="empty-title">No locations shared yet.</div>
             <button className="btn btn-primary" onClick={() => navigate("/share-location")}>Share Your First Location</button>
           </div>

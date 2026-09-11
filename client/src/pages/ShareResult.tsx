@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { CheckCircle2, MapPin } from "lucide-react";
 import { getPublicShare } from "../services/shares";
 import { useCountdown } from "../hooks/useCountdown";
 import { useToast } from "../hooks/useToast";
@@ -55,11 +56,13 @@ export default function ShareResult() {
 
   return (
     <div className="page-fade-in" style={{ maxWidth: 420, margin: "20px auto", textAlign: "center" }}>
-      <div className="success-check">✓</div>
+      <div className="success-check"><CheckCircle2 size={38} /></div>
       <h1 className="page-title mt-16">Your location link is ready</h1>
 
       <div className="card card-pad mt-24" style={{ textAlign: "left" }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>📍 {share.placeName}</div>
+        <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 6 }}>
+          <MapPin size={15} /> {share.placeName}
+        </div>
         <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{share.formattedAddress}</div>
 
         <hr className="divider" />

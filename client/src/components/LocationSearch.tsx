@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Search, MapPin } from "lucide-react";
 import { useDebounce } from "../hooks/useDebounce";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { searchLocations, reverseGeocodeLocation } from "../services/locations";
@@ -87,7 +88,7 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
   return (
     <div style={{ position: "relative" }} ref={wrapRef}>
       <div className="search-input-wrap">
-        <span className="search-icon">🔍</span>
+        <span className="search-icon"><Search size={17} /></span>
         <input
           className="input"
           placeholder="Search a place, address, landmark, or paste coordinates"
@@ -143,8 +144,8 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
                 }}
               >
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    📍 {place.name}
+                  <span style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                    <MapPin size={14} style={{ flexShrink: 0 }} /> {place.name}
                   </span>
                   <span
                     className="text-muted"

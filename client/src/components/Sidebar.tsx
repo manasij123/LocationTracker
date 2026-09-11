@@ -1,14 +1,16 @@
 import { NavLink } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
+import { Home, MapPin, Map, Radio, Activity, TrendingUp, Settings } from "lucide-react";
 import BrandLogo from "./BrandLogo";
 
-const navItems = [
-  { to: "/", label: "Dashboard", icon: "🏠", end: true },
-  { to: "/share-location", label: "Share Location", icon: "📍" },
-  { to: "/locations", label: "My Locations", icon: "🗺" },
-  { to: "/my-location", label: "My Current Location", icon: "📡" },
-  { to: "/activity", label: "Activity", icon: "📊" },
-  { to: "/analytics", label: "Analytics", icon: "📈" },
-  { to: "/settings", label: "Settings", icon: "⚙" },
+const navItems: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
+  { to: "/", label: "Dashboard", icon: Home, end: true },
+  { to: "/share-location", label: "Share Location", icon: MapPin },
+  { to: "/locations", label: "My Locations", icon: Map },
+  { to: "/my-location", label: "My Current Location", icon: Radio },
+  { to: "/activity", label: "Activity", icon: Activity },
+  { to: "/analytics", label: "Analytics", icon: TrendingUp },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -30,7 +32,7 @@ export default function Sidebar() {
             end={item.end}
             className={({ isActive }) => `sidebar-link${isActive ? " active" : ""}`}
           >
-            <span className="icon">{item.icon}</span>
+            <span className="icon"><item.icon size={18} /></span>
             <span>{item.label}</span>
           </NavLink>
         ))}

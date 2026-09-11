@@ -1,3 +1,4 @@
+import { Menu } from "lucide-react";
 import BrandLogo from "./BrandLogo";
 
 interface TopBarProps {
@@ -12,7 +13,7 @@ export default function TopBar({ onOpenMenu }: TopBarProps) {
         SpotShare
       </div>
       <button className="icon-btn" onClick={onOpenMenu} aria-label="Open menu">
-        ☰
+        <Menu size={20} />
       </button>
     </header>
   );
