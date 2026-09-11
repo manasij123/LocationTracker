@@ -15,6 +15,13 @@ const ROUTE_COLOR = "#ef4444";
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const MOVE_ANIMATION_MS = 1800;
 const LIVE_PING_GLIDE_MS = 1200;
+// A live-tracking trail normally logs a point at least every 90s (the heartbeat interval in
+// useLiveShare.tsx) even while stationary — so a gap this much bigger than that almost
+// certainly means the tab was backgrounded/suspended (not just normal jitter), and the straight
+// line between those two points is not a real, tracked path. Drawn as a dashed, muted segment
+// instead of a solid red one so it never reads as an actually-recorded route.
+const GAP_THRESHOLD_MS = 3 * 60_000;
+const GAP_COLOR = "#9ca3af";
 const DOT_SIZE = 22;
 
 function easeInOutQuad(t: number): number {
@@ -65,6 +72,32 @@ function buildFlowingRouteIcons(): google.maps.IconSequence[] {
       repeat: "110px",
     },
   ];
+}
+
+/** Splits a live-tracking trail into contiguous "tracked" runs, breaking wherever consecutive
+ *  points are further apart in time than GAP_THRESHOLD_MS — each break is reported separately
+ *  as its own two-point "gap" bridge, so the caller can style it differently from a real,
+ *  continuously-recorded segment. */
+function splitLiveTrackIntoSegments(
+  points: LiveTrackPoint[]
+): { path: google.maps.LatLngLiteral[]; isGap: boolean }[] {
+  if (points.length === 0) return [];
+  const segments: { path: google.maps.LatLngLiteral[]; isGap: boolean }[] = [];
+  let current: google.maps.LatLngLiteral[] = [{ lat: points[0].latitude, lng: points[0].longitude }];
+
+  for (let i = 1; i < points.length; i++) {
+    const gapMs = new Date(points[i].recordedAt).getTime() - new Date(points[i - 1].recordedAt).getTime();
+    const point = { lat: points[i].latitude, lng: points[i].longitude };
+    if (gapMs > GAP_THRESHOLD_MS) {
+      segments.push({ path: current, isGap: false });
+      segments.push({ path: [current[current.length - 1], point], isGap: true });
+      current = [point];
+    } else {
+      current.push(point);
+    }
+  }
+  segments.push({ path: current, isGap: false });
+  return segments;
 }
 
 interface HtmlOverlayInstance {
@@ -146,6 +179,7 @@ interface LiveTrackPoint {
   latitude: number;
   longitude: number;
   waitPointLabel?: number | null;
+  recordedAt: string;
 }
 
 interface MapViewProps {
@@ -223,7 +257,7 @@ export default function MapView({
   const liveSegmentActiveRef = useRef(false);
   const userInteractingRef = useRef(false);
   const pendingResumeElapsedMsRef = useRef<number | null>(null);
-  const liveTrackPolylineRef = useRef<google.maps.Polyline | null>(null);
+  const liveTrackSegmentPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const liveWaitPointMarkersRef = useRef<HtmlOverlayInstance[]>([]);
 
   // Load the SDK and create the map once.
@@ -310,8 +344,8 @@ export default function MapView({
       historyPolylinesRef.current = [];
       liveSegmentPolylineRef.current?.setMap(null);
       liveSegmentPolylineRef.current = null;
-      liveTrackPolylineRef.current?.setMap(null);
-      liveTrackPolylineRef.current = null;
+      liveTrackSegmentPolylinesRef.current.forEach((p) => p.setMap(null));
+      liveTrackSegmentPolylinesRef.current = [];
       liveWaitPointMarkersRef.current.forEach((m) => m.setMap(null));
       liveWaitPointMarkersRef.current = [];
       if (flowAnimationFrameRef.current) cancelAnimationFrame(flowAnimationFrameRef.current);
@@ -585,22 +619,35 @@ export default function MapView({
   // Draws a "My Current Location" live-tracking share's raw GPS trail as a growing red line —
   // no Directions API route-fetching, since these are the actual points walked/driven, not an
   // estimate — plus a numbered "W.P:N" pin at each point the creator stayed put for a while.
+  // Rebuilt from scratch on every change rather than diffed — trail sizes here are modest, and
+  // this keeps the gap-splitting logic simple.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
 
-    const path = liveTrack.map((p) => ({ lat: p.latitude, lng: p.longitude }));
-
-    if (!liveTrackPolylineRef.current) {
-      liveTrackPolylineRef.current = new google.maps.Polyline({
-        path: [],
-        strokeColor: ROUTE_COLOR,
-        strokeWeight: 4,
-        strokeOpacity: 0.85,
-        map,
-      });
-    }
-    liveTrackPolylineRef.current.setPath(path);
+    liveTrackSegmentPolylinesRef.current.forEach((p) => p.setMap(null));
+    liveTrackSegmentPolylinesRef.current = splitLiveTrackIntoSegments(liveTrack).map((segment) =>
+      segment.isGap
+        ? new google.maps.Polyline({
+            path: segment.path,
+            strokeOpacity: 0,
+            icons: [
+              {
+                icon: { path: "M 0,-1 0,1", strokeOpacity: 0.75, strokeColor: GAP_COLOR, scale: 3 },
+                offset: "0",
+                repeat: "10px",
+              },
+            ],
+            map,
+          })
+        : new google.maps.Polyline({
+            path: segment.path,
+            strokeColor: ROUTE_COLOR,
+            strokeWeight: 4,
+            strokeOpacity: 0.85,
+            map,
+          })
+    );
 
     liveWaitPointMarkersRef.current.forEach((m) => m.setMap(null));
     const Overlay = getHtmlOverlayClass();

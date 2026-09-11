@@ -5,6 +5,10 @@ import type { Share, LiveTrackPoint } from "../types";
 // Matches the wait-point radius used while recording (useLiveShare.tsx) — used here only to
 // figure out, after the fact, how long a stay around each wait point actually lasted.
 const WAIT_RADIUS_METERS = 30;
+// Matches the gap threshold used for map rendering (MapView.tsx) — a live-tracking trail
+// normally logs a point at least every 90s (the heartbeat interval), so a gap much bigger than
+// that almost certainly means the tab was backgrounded/suspended, not normal jitter.
+const GAP_THRESHOLD_MS = 3 * 60_000;
 
 type RGB = [number, number, number];
 const COLOR_LIVE: RGB = [220, 38, 38]; // matches the app's "🔴 LIVE" red
@@ -12,6 +16,8 @@ const COLOR_PRIMARY: RGB = [37, 99, 235]; // matches the app's primary blue
 const COLOR_AMBER: RGB = [217, 119, 6]; // matches the wait-point pin's amber
 const COLOR_AMBER_BG: RGB = [254, 243, 199];
 const COLOR_AMBER_TEXT: RGB = [146, 64, 14];
+const COLOR_GRAY: RGB = [107, 114, 128];
+const COLOR_GRAY_BG: RGB = [229, 231, 235];
 const COLOR_TEXT: RGB = [17, 24, 39];
 const COLOR_MUTED: RGB = [107, 114, 128];
 
@@ -43,6 +49,16 @@ function googleMapsUrl(latitude: number, longitude: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 }
 
+/** A Google Maps directions link between two points — used for a gap, so a reader can see both
+ *  ends of the untracked stretch (and the straight-line distance between them) at a glance. */
+function googleMapsDirectionsUrl(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): string {
+  return `https://www.google.com/maps/dir/?api=1&origin=${a.latitude},${a.longitude}&destination=${b.latitude},${b.longitude}`;
+}
+
+function timeGapMs(a: { recordedAt: string }, b: { recordedAt: string }): number {
+  return new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime();
+}
+
 interface WaitPointSummary {
   label: number;
   latitude: number;
@@ -56,16 +72,31 @@ interface WaitPointSummary {
  * by then, the regular/heartbeat points logged in the minutes leading up to (and following)
  * that moment already trace out the whole stay. Walking outward from each wait point through
  * the contiguous run of nearby points recovers the real arrival/last-seen window, so the report
- * can say "waited here from X to Y (Zm)" instead of just the single trigger timestamp.
+ * can say "waited here from X to Y (Zm)" instead of just the single trigger timestamp. The walk
+ * also stops at a recording gap (GAP_THRESHOLD_MS) even if the next point is still close by —
+ * tracking wasn't actually running during that stretch, so it shouldn't be counted as part of a
+ * continuously-observed stay.
  */
 function computeWaitPointSummaries(points: LiveTrackPoint[]): WaitPointSummary[] {
   return points.flatMap((p, i) => {
     if (p.waitPointLabel == null) return [];
 
     let start = i;
-    while (start > 0 && distanceMeters(points[start - 1], p) <= WAIT_RADIUS_METERS) start--;
+    while (
+      start > 0 &&
+      distanceMeters(points[start - 1], p) <= WAIT_RADIUS_METERS &&
+      timeGapMs(points[start - 1], points[start]) <= GAP_THRESHOLD_MS
+    ) {
+      start--;
+    }
     let end = i;
-    while (end < points.length - 1 && distanceMeters(points[end + 1], p) <= WAIT_RADIUS_METERS) end++;
+    while (
+      end < points.length - 1 &&
+      distanceMeters(points[end + 1], p) <= WAIT_RADIUS_METERS &&
+      timeGapMs(points[end], points[end + 1]) <= GAP_THRESHOLD_MS
+    ) {
+      end++;
+    }
 
     return [
       {
@@ -77,6 +108,27 @@ function computeWaitPointSummaries(points: LiveTrackPoint[]): WaitPointSummary[]
       },
     ];
   });
+}
+
+interface GapSummary {
+  beforeIndex: number;
+  afterIndex: number;
+  gapMs: number;
+}
+
+/** Finds every stretch where consecutive points are further apart in time than the normal
+ *  heartbeat cadence would ever produce — almost always because the browser tab was
+ *  backgrounded (or the device lost GPS/network) for that stretch, so nothing was recorded and
+ *  a straight line between the two points would misrepresent an untracked path as a real one. */
+function computeGapSummaries(points: LiveTrackPoint[]): GapSummary[] {
+  const gaps: GapSummary[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const gapMs = timeGapMs(points[i - 1], points[i]);
+    if (gapMs > GAP_THRESHOLD_MS) {
+      gaps.push({ beforeIndex: i - 1, afterIndex: i, gapMs });
+    }
+  }
+  return gaps;
 }
 
 /**
@@ -136,17 +188,65 @@ export function downloadLiveTrackReportPdf(share: Share) {
     totalDistance += distanceMeters(points[i - 1], points[i]);
   }
   const waitSummaries = computeWaitPointSummaries(points);
+  const gapSummaries = computeGapSummaries(points);
 
   autoTable(doc, {
     startY: y,
     theme: "grid",
     styles: { halign: "center", fontStyle: "bold", fontSize: 11, cellPadding: 4 },
     headStyles: { fillColor: COLOR_PRIMARY, textColor: 255 },
-    head: [["Recorded Points", "Wait Points", "Distance Covered"]],
-    body: [[String(points.length), String(waitSummaries.length), `${(totalDistance / 1000).toFixed(2)} km`]],
+    head: [["Recorded Points", "Wait Points", "GPS Gaps", "Distance Covered"]],
+    body: [[String(points.length), String(waitSummaries.length), String(gapSummaries.length), `${(totalDistance / 1000).toFixed(2)} km`]],
   });
   // @ts-expect-error jspdf-autotable attaches this at runtime; not in its type declarations
   y = doc.lastAutoTable.finalY + 12;
+
+  if (gapSummaries.length > 0) {
+    doc.setFontSize(12.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...COLOR_GRAY);
+    doc.text("GPS Gaps (tracking paused — not a recorded path)", 14, y);
+    doc.setTextColor(...COLOR_TEXT);
+    y += 4;
+
+    autoTable(doc, {
+      startY: y,
+      theme: "striped",
+      headStyles: { fillColor: COLOR_GRAY, textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 3 },
+      head: [["Gap #", "Last Seen", "Resumed", "Duration", "Map"]],
+      body: gapSummaries.map((g, i) => [
+        `Gap ${i + 1}`,
+        formatStamp(points[g.beforeIndex].recordedAt),
+        formatStamp(points[g.afterIndex].recordedAt),
+        formatDuration(g.gapMs),
+        "View Gap on Map",
+      ]),
+      didParseCell: (data) => {
+        if (data.section === "body") {
+          data.cell.styles.fillColor = COLOR_GRAY_BG;
+          data.cell.styles.textColor = COLOR_TEXT;
+        }
+      },
+      didDrawCell: (data) => {
+        if (data.section === "body" && data.column.index === 4) {
+          const g = gapSummaries[data.row.index];
+          doc.setTextColor(...COLOR_PRIMARY);
+          doc.textWithLink("View Gap on Map", data.cell.x + 2, data.cell.y + data.cell.height / 2 + 1.5, {
+            url: googleMapsDirectionsUrl(points[g.beforeIndex], points[g.afterIndex]),
+          });
+        }
+      },
+    });
+    // @ts-expect-error jspdf-autotable attaches this at runtime; not in its type declarations
+    y = doc.lastAutoTable.finalY + 3;
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...COLOR_MUTED);
+    doc.text("No location was recorded during a gap — most likely the browser tab was backgrounded or the device lost GPS/network.", 14, y);
+    doc.setTextColor(...COLOR_TEXT);
+    y += 10;
+  }
 
   if (waitSummaries.length > 0) {
     doc.setFontSize(12.5);

@@ -158,6 +158,21 @@ whole time. That said, this only tracks for as long as the creator's browser tab
 the note above) — it's not a substitute for a native background-tracking app, which remains a
 separate, future project.
 
+"Open" isn't the same as "in the foreground", though: switching away to another app (e.g. to
+compare against Google Maps) backgrounds the tab, and most mobile browsers pause or heavily
+throttle geolocation/JS timers while it's hidden — so recording effectively stops for however
+long it stays backgrounded, leaving a gap. `useLiveShare.tsx` listens for
+`visibilitychange` and, on returning to the foreground, immediately grabs a fresh GPS fix
+(instead of waiting for the next natural update) and shows a toast naming how long tracking was
+paused, so the gap is both closed quickly and disclosed rather than silent. More importantly, a
+gap that large (>3 minutes — well past the 90s heartbeat cadence, so not just normal jitter) is
+never drawn as a normal solid red line on the map — `MapView.tsx` splits the trail at each such
+gap and renders that bridging segment as a dashed gray line instead, and the PDF report
+(`liveTrackReport.ts`) calls it out in its own "GPS Gaps" table (last-seen/resumed timestamps,
+duration, a Maps link spanning both ends) — since a straight line implying a continuously-tracked
+path across a stretch that was never actually observed would be actively misleading for
+something meant to serve as a record of where the creator really was.
+
 Live-track points aren't kept forever, though: a scheduled server-side job
 (`server/src/services/liveTrackRetention.ts`, runs once at startup and then every 24h) purges
 `LiveTrackPoint` rows older than `LIVE_TRACK_RETENTION_DAYS` (default 60 days) — long enough to

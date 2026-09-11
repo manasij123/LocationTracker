@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { startLiveShare, sendLivePing, revokeShare } from "../services/shares";
+import { useToast } from "./useToast";
 import type { Share } from "../types";
 
 export type LiveShareStatus = "idle" | "requesting" | "sharing" | "error";
@@ -55,6 +56,7 @@ function distanceMeters(a: Coords, b: Coords): number {
  * specific page is on screen — it only stops on the explicit "Stop sharing" action.
  */
 export function LiveShareProvider({ children }: { children: ReactNode }) {
+  const { show } = useToast();
   const [status, setStatus] = useState<LiveShareStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [share, setShare] = useState<Share | null>(null);
@@ -65,6 +67,7 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
   const anchorRef = useRef<{ position: Coords; since: number; waitPointFired: boolean } | null>(null);
   const lastSentRef = useRef<{ position: Coords; at: number } | null>(null);
   const sendingRef = useRef(false);
+  const hiddenSinceRef = useRef<number | null>(null);
 
   const stop = useCallback(async () => {
     if (watchIdRef.current != null) {
@@ -77,6 +80,7 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
     lastSentRef.current = null;
     setStatus("idle");
     setShare(null);
+    hiddenSinceRef.current = null;
     if (shareId) {
       try {
         await revokeShare(shareId);
@@ -128,6 +132,39 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
         sendingRef.current = false;
       });
   }, []);
+
+  // Backgrounding this tab (switching to another app, e.g. to check Google Maps for
+  // comparison) is not the same as closing it — the tab stays "open" but most mobile browsers
+  // pause or heavily throttle geolocation/JS timers while it's hidden, so recording effectively
+  // stops until it's foregrounded again, leaving a gap. Surface that (tabHidden, read by the UI
+  // to show a warning) and grab a fresh fix immediately on return rather than waiting for the
+  // next natural update, so the gap closes as soon as possible instead of staying open longer
+  // than it has to.
+  useEffect(() => {
+    if (status !== "sharing") return;
+    function handleVisibilityChange() {
+      const hidden = document.visibilityState === "hidden";
+      if (hidden) {
+        hiddenSinceRef.current = Date.now();
+        return;
+      }
+      const hiddenSince = hiddenSinceRef.current;
+      hiddenSinceRef.current = null;
+      // A quick tab switch isn't worth a notice — only tell the creator about a gap long
+      // enough that tracking realistically paused for it, not normal glance-away noise.
+      if (hiddenSince != null && Date.now() - hiddenSince > 15_000) {
+        const minutes = Math.max(1, Math.round((Date.now() - hiddenSince) / 60_000));
+        show(`Tracking paused for ~${minutes}m while this tab was in the background — resumed now.`, "info");
+      }
+      navigator.geolocation.getCurrentPosition(handlePosition, () => {}, {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      });
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [status, handlePosition, show]);
 
   const start = useCallback(() => {
     if (!("geolocation" in navigator)) {
