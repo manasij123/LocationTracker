@@ -18,7 +18,7 @@ export default function MoreDrawer({ open, onClose }: MoreDrawerProps) {
           <div className="brand-mark"><img src="/logo.svg" alt="SpotShare" /></div>
           <div>
             <div className="brand-name">SpotShare</div>
-            <div className="brand-tagline">Temporary location sharing</div>
+            <div className="brand-tagline">Location Sharing</div>
           </div>
         </div>
         <NavLink to="/my-location" className="sidebar-link" onClick={onClose}>
