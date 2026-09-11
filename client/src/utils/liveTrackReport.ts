@@ -1,4 +1,8 @@
-import type { Share } from "../types";
+import type { Share, LiveTrackPoint } from "../types";
+
+// Matches the wait-point radius used while recording (useLiveShare.tsx) — used here only to
+// figure out, after the fact, how long a stay around each wait point actually lasted.
+const WAIT_RADIUS_METERS = 30;
 
 function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
   const R = 6371000;
@@ -12,6 +16,50 @@ function distanceMeters(a: { latitude: number; longitude: number }, b: { latitud
 
 function formatStamp(dateInput: string): string {
   return new Date(dateInput).toLocaleString([], { dateStyle: "medium", timeStyle: "medium" });
+}
+
+function formatDuration(ms: number): string {
+  const totalMinutes = Math.max(1, Math.round(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+interface WaitPointSummary {
+  label: number;
+  latitude: number;
+  longitude: number;
+  arrivedAt: string;
+  lastSeenAt: string;
+}
+
+/**
+ * A wait point is only recorded once, at the moment 5 minutes near one spot has elapsed — but
+ * by then, the regular/heartbeat points logged in the minutes leading up to (and following)
+ * that moment already trace out the whole stay. Walking outward from each wait point through
+ * the contiguous run of nearby points recovers the real arrival/last-seen window, so the report
+ * can say "waited here from X to Y (Zm)" instead of just the single trigger timestamp.
+ */
+function computeWaitPointSummaries(points: LiveTrackPoint[]): WaitPointSummary[] {
+  return points.flatMap((p, i) => {
+    if (p.waitPointLabel == null) return [];
+
+    let start = i;
+    while (start > 0 && distanceMeters(points[start - 1], p) <= WAIT_RADIUS_METERS) start--;
+    let end = i;
+    while (end < points.length - 1 && distanceMeters(points[end + 1], p) <= WAIT_RADIUS_METERS) end++;
+
+    return [
+      {
+        label: p.waitPointLabel,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        arrivedAt: points[start].recordedAt,
+        lastSeenAt: points[end].recordedAt,
+      },
+    ];
+  });
 }
 
 /**
@@ -43,6 +91,21 @@ export function buildLiveTrackReport(share: Share): string {
     totalDistance += distanceMeters(points[i - 1], points[i]);
   }
   lines.push(`Approximate distance covered: ${(totalDistance / 1000).toFixed(2)} km`);
+
+  const waitPointSummaries = computeWaitPointSummaries(points);
+  if (waitPointSummaries.length > 0) {
+    lines.push("");
+    lines.push("Wait points (stayed in one place for 5+ minutes):");
+    lines.push("-".repeat(40));
+    waitPointSummaries.forEach((w) => {
+      const durationMs = new Date(w.lastSeenAt).getTime() - new Date(w.arrivedAt).getTime();
+      lines.push(
+        `Waited Point W.P:${w.label} — from ${formatStamp(w.arrivedAt)} to ${formatStamp(w.lastSeenAt)} ` +
+          `(${formatDuration(durationMs)}) at ${w.latitude.toFixed(6)}, ${w.longitude.toFixed(6)}`
+      );
+    });
+  }
+
   lines.push("");
   lines.push("Recorded points (oldest first):");
   lines.push("-".repeat(40));

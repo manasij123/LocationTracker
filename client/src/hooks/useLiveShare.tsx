@@ -28,6 +28,11 @@ const WAIT_DURATION_MS = 5 * 60_000;
 // doesn't spam the server, while still keeping the trail reasonably granular while moving.
 const PING_THROTTLE_MS = 5000;
 const PING_MIN_MOVE_METERS = 8;
+// Even while standing still (so neither the movement threshold above nor a wait point has
+// fired), still log a plain "was here at this time" point on this cadence — the movement-only
+// throttle otherwise means a stationary trail is entirely silent until the 5-minute wait point,
+// leaving no record at all of, say, the 2 minutes right before that.
+const HEARTBEAT_INTERVAL_MS = 90_000;
 
 function distanceMeters(a: Coords, b: Coords): number {
   const R = 6371000;
@@ -99,8 +104,10 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
     const last = lastSentRef.current;
     const movedEnough = !last || distanceMeters(last.position, point) >= PING_MIN_MOVE_METERS;
     const throttleElapsed = !last || now - last.at >= PING_THROTTLE_MS;
+    const shouldSendMovement = movedEnough && throttleElapsed;
+    const shouldSendHeartbeat = !last || now - last.at >= HEARTBEAT_INTERVAL_MS;
 
-    if (!shouldFireWaitPoint && !(movedEnough && throttleElapsed)) return;
+    if (!shouldFireWaitPoint && !shouldSendMovement && !shouldSendHeartbeat) return;
     if (sendingRef.current) return;
 
     sendingRef.current = true;

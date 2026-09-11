@@ -131,22 +131,29 @@ shows a "🔴 Live" indicator instead of a countdown.
 
 As the creator moves, their actual raw GPS fixes (not a fetched/estimated route — no Directions
 API calls at all for this, unlike manually-updated shares) are drawn directly as a growing red
-trail, throttled to roughly one point per ~5 seconds or ~8 meters moved. If they stay within
-about 30 meters of one spot for 5+ minutes, that spot is auto-detected client-side and recorded
-as a numbered "Wait Point" ("W.P:1", "W.P:2", ...). Both the trail and wait points are persisted
-server-side (`LiveTrackPoint` rows) so a recipient reloading the page still sees the full
-accumulated history, the same way a manual share's location history survives reloads.
+trail. Points are logged on whichever of these fires first: roughly one point per ~5 seconds
+once moved ~8+ meters, or — regardless of movement — at least once every 90 seconds anyway, so a
+stationary stretch still leaves a "was here at this time" record instead of going silent until
+something else triggers. If they stay within about 30 meters of one spot for 5+ minutes, that
+spot is additionally auto-detected client-side and recorded as a numbered "Wait Point"
+("W.P:1", "W.P:2", ...). Both the trail and wait points are persisted server-side
+(`LiveTrackPoint` rows) so a recipient reloading the page still sees the full accumulated
+history, the same way a manual share's location history survives reloads.
 
 This doubles as a personal safety record, not just a live-sharing convenience: pressing "Stop
 Sharing" only revokes the *public* link (recipients immediately lose access, same as revoking
 any other share) — it does not delete the recorded trail. The creator can still open that share
 from **My Locations** afterwards (even once it's expired/revoked) to see the full historical
-trail and wait points on the map, and download a plain-text report of it (timestamped points,
-wait points, and approximate distance covered) via **Download Track Report** — something that
-can be handed to someone else (e.g. shown to police) as a record of where the creator actually
-was, without needing them to have been watching the live link the whole time. That said, this
-only tracks for as long as the creator's browser tab stays open (see the note above) — it's not
-a substitute for a native background-tracking app, which remains a separate, future project.
+trail and wait points on the map, and download a plain-text report of it via **Download Track
+Report** (`client/src/utils/liveTrackReport.ts`) — every logged point with its timestamp and
+coordinates, plus a dedicated summary line per wait point ("Waited Point W.P:1 — from ... to ...
+(12m) at lat, lng"), reconstructed by walking outward from the wait-point trigger through the
+contiguous run of nearby points to find when the stay actually started and ended, not just the
+single moment the 5-minute threshold was crossed. This can be handed to someone else (e.g. shown
+to police) as a record of where the creator actually was, without needing them to have been
+watching the live link the whole time. That said, this only tracks for as long as the creator's
+browser tab stays open (see the note above) — it's not a substitute for a native
+background-tracking app, which remains a separate, future project.
 
 Live-track points aren't kept forever, though: a scheduled server-side job
 (`server/src/services/liveTrackRetention.ts`, runs once at startup and then every 24h) purges
