@@ -1,14 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { startLiveShare, sendLivePing, revokeShare } from "../services/shares";
 import { useToast } from "./useToast";
+import { startWatchingPosition, getCurrentPositionOnce, isNativeApp, type GeoCoords } from "../utils/nativeGeolocation";
 import type { Share } from "../types";
 
 export type LiveShareStatus = "idle" | "requesting" | "sharing" | "error";
 
-interface Coords {
-  latitude: number;
-  longitude: number;
-}
+type Coords = GeoCoords;
 
 interface LiveShareContextValue {
   status: LiveShareStatus;
@@ -46,14 +44,16 @@ function distanceMeters(a: Coords, b: Coords): number {
 }
 
 /**
- * Drives a "My Current Location" live-tracking share for as long as this browser tab stays
- * open: watches real GPS continuously (`watchPosition`, unlike `useUserLocation`'s one-shot
- * read used elsewhere just to show "how far away" a search result is), sends throttled pings
- * to the server, and auto-detects "wait points" — spots the creator stays near for 5+ minutes
- * — entirely client-side from the same GPS stream, no extra requests needed. Held in a
- * context (mounted once at the app root) rather than local page state, so sharing keeps
- * running while the creator browses to other pages in the app and not just while this
- * specific page is on screen — it only stops on the explicit "Stop sharing" action.
+ * Drives a "My Current Location" live-tracking share: watches real GPS continuously (via
+ * `nativeGeolocation.ts` — the OS-level background-geolocation plugin when running inside the
+ * Capacitor-wrapped native app, so tracking keeps working even backgrounded/screen-off, or the
+ * browser's `watchPosition` in a plain web tab, unlike `useUserLocation`'s one-shot read used
+ * elsewhere just to show "how far away" a search result is), sends throttled pings to the
+ * server, and auto-detects "wait points" — spots the creator stays near for 5+ minutes —
+ * entirely client-side from the same GPS stream, no extra requests needed. Held in a context
+ * (mounted once at the app root) rather than local page state, so sharing keeps running while
+ * the creator browses to other pages in the app and not just while this specific page is on
+ * screen — it only stops on the explicit "Stop sharing" action.
  */
 export function LiveShareProvider({ children }: { children: ReactNode }) {
   const { show } = useToast();
@@ -62,7 +62,7 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
   const [share, setShare] = useState<Share | null>(null);
   const [coords, setCoords] = useState<Coords | null>(null);
 
-  const watchIdRef = useRef<number | null>(null);
+  const stopWatchingRef = useRef<(() => void) | null>(null);
   const shareIdRef = useRef<string | null>(null);
   const anchorRef = useRef<{ position: Coords; since: number; waitPointFired: boolean } | null>(null);
   const lastSentRef = useRef<{ position: Coords; at: number } | null>(null);
@@ -70,10 +70,8 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
   const hiddenSinceRef = useRef<number | null>(null);
 
   const stop = useCallback(async () => {
-    if (watchIdRef.current != null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
+    stopWatchingRef.current?.();
+    stopWatchingRef.current = null;
     const shareId = shareIdRef.current;
     shareIdRef.current = null;
     anchorRef.current = null;
@@ -91,8 +89,7 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const handlePosition = useCallback((position: GeolocationPosition) => {
-    const point: Coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+  const handlePosition = useCallback((point: Coords) => {
     setCoords(point);
 
     const shareId = shareIdRef.current;
@@ -136,12 +133,13 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
   // Backgrounding this tab (switching to another app, e.g. to check Google Maps for
   // comparison) is not the same as closing it — the tab stays "open" but most mobile browsers
   // pause or heavily throttle geolocation/JS timers while it's hidden, so recording effectively
-  // stops until it's foregrounded again, leaving a gap. Surface that (tabHidden, read by the UI
-  // to show a warning) and grab a fresh fix immediately on return rather than waiting for the
-  // next natural update, so the gap closes as soon as possible instead of staying open longer
-  // than it has to.
+  // stops until it's foregrounded again, leaving a gap. Grab a fresh fix immediately on return
+  // rather than waiting for the next natural update, and let the creator know how long it was
+  // paused. Only relevant on the web: inside the native app, the background-geolocation plugin
+  // keeps its own foreground service running regardless of this tab's visibility, so there's no
+  // gap to close here.
   useEffect(() => {
-    if (status !== "sharing") return;
+    if (status !== "sharing" || isNativeApp) return;
     function handleVisibilityChange() {
       const hidden = document.visibilityState === "hidden";
       if (hidden) {
@@ -156,58 +154,62 @@ export function LiveShareProvider({ children }: { children: ReactNode }) {
         const minutes = Math.max(1, Math.round((Date.now() - hiddenSince) / 60_000));
         show(`Tracking paused for ~${minutes}m while this tab was in the background — resumed now.`, "info");
       }
-      navigator.geolocation.getCurrentPosition(handlePosition, () => {}, {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      });
+      getCurrentPositionOnce().then(handlePosition).catch(() => {});
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [status, handlePosition, show]);
 
+  // The first position callback both starts the share (with that point as the origin) and kicks
+  // off continuous watching — after that, every further callback is a normal ping through
+  // handlePosition. This works the same way on native and web, since nativeGeolocation.ts's
+  // startWatchingPosition fires its first callback as soon as a fix is available on either
+  // platform, same as the browser's watchPosition does.
   const start = useCallback(() => {
-    if (!("geolocation" in navigator)) {
-      setStatus("error");
-      setError("This browser doesn't support location access.");
-      return;
-    }
     setStatus("requesting");
     setError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const point: Coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-        startLiveShare(point)
-          .then(({ share: created }) => {
-            shareIdRef.current = created.id;
-            anchorRef.current = { position: point, since: Date.now(), waitPointFired: false };
-            lastSentRef.current = { position: point, at: Date.now() };
-            setShare(created);
-            setCoords(point);
-            setStatus("sharing");
-
-            watchIdRef.current = navigator.geolocation.watchPosition(
-              handlePosition,
-              () => {
-                setStatus("error");
-                setError("Lost access to your location. Sharing has stopped.");
-                stop();
-              },
-              { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
-            );
-          })
-          .catch(() => {
-            setStatus("error");
-            setError("Couldn't start live sharing. Please try again.");
-          });
+    let started = false;
+    startWatchingPosition(
+      (point) => {
+        if (!started) {
+          started = true;
+          startLiveShare(point)
+            .then(({ share: created }) => {
+              shareIdRef.current = created.id;
+              anchorRef.current = { position: point, since: Date.now(), waitPointFired: false };
+              lastSentRef.current = { position: point, at: Date.now() };
+              setShare(created);
+              setCoords(point);
+              setStatus("sharing");
+            })
+            .catch(() => {
+              setStatus("error");
+              setError("Couldn't start live sharing. Please try again.");
+              stopWatchingRef.current?.();
+              stopWatchingRef.current = null;
+            });
+        } else {
+          handlePosition(point);
+        }
       },
       () => {
         setStatus("error");
+        setError(
+          isNativeApp
+            ? "Lost access to your location. Sharing has stopped."
+            : "Lost access to your location, or this browser doesn't support it. Sharing has stopped."
+        );
+        stop();
+      }
+    )
+      .then((stopWatching) => {
+        stopWatchingRef.current = stopWatching;
+      })
+      .catch(() => {
+        setStatus("error");
         setError("Location permission was denied.");
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+      });
   }, [handlePosition, stop]);
 
   const value = useMemo(

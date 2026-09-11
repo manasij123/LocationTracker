@@ -154,12 +154,13 @@ not just the single moment the 5-minute threshold was crossed), and a "Open in M
 every row/point that opens Google Maps (the app on a phone, the web map in a browser) pinned at
 that exact coordinate. This can be handed to someone else (e.g. shown to police) as a record of
 where the creator actually was, without needing them to have been watching the live link the
-whole time. That said, this only tracks for as long as the creator's browser tab stays open (see
-the note above) — it's not a substitute for a native background-tracking app, which remains a
-separate, future project.
+whole time. In the plain web app, this only tracks for as long as the creator's browser tab
+stays open and in the foreground (see the note below) — the Android app (see **Android app
+(Capacitor)** below) removes that restriction, tracking in the background too.
 
-"Open" isn't the same as "in the foreground", though: switching away to another app (e.g. to
-compare against Google Maps) backgrounds the tab, and most mobile browsers pause or heavily
+In the plain web app, "open" isn't the same as "in the foreground", though: switching away to
+another app (e.g. to compare against Google Maps) backgrounds the tab, and most mobile browsers
+pause or heavily
 throttle geolocation/JS timers while it's hidden — so recording effectively stops for however
 long it stays backgrounded, leaving a gap. `useLiveShare.tsx` listens for
 `visibilitychange` and, on returning to the foreground, immediately grabs a fresh GPS fix
@@ -178,6 +179,48 @@ Live-track points aren't kept forever, though: a scheduled server-side job
 `LiveTrackPoint` rows older than `LIVE_TRACK_RETENTION_DAYS` (default 60 days) — long enough to
 outlive any real emergency's relevant window, without accumulating GPS history indefinitely. It
 only ever deletes old trail points, never the `Share` record itself.
+
+## Android app (Capacitor)
+
+The web app's `client/` directory doubles as the source for a real Android app, wrapped with
+[Capacitor](https://capacitorjs.com) — same React/TypeScript codebase, same UI, same backend API,
+with one difference: real background GPS tracking, which a browser tab fundamentally cannot do
+(see the note above). This exists specifically so the "My Current Location" safety-record feature
+keeps working while the app is minimized or the screen is off, not just while it's the active tab.
+
+- **Setup**: `@capacitor/core`, `@capacitor/android`, and
+  [`@capacitor-community/background-geolocation`](https://github.com/capacitor-community/background-geolocation)
+  (MIT-licensed, free — chosen over the more feature-rich Transistor Software plugin specifically
+  because that one requires a paid production license, which doesn't fit this project's
+  free-to-run approach). `capacitor.config.ts` sets `appId: com.spotshare.app`,
+  `appName: SpotShare`, `webDir: dist`. The generated native project lives in `client/android/`
+  and is committed to the repo (its build outputs, `local.properties`, and other
+  machine-specific/generated files are excluded via `client/android/.gitignore`, same as any
+  Android Studio project).
+- **How the code stays shared**: `client/src/utils/nativeGeolocation.ts` is the only
+  platform-aware piece — it checks `Capacitor.isNativePlatform()` and either drives the
+  background-geolocation plugin (native app) or `navigator.geolocation.watchPosition` (plain web
+  tab) behind one identical function signature. `useLiveShare.tsx` (and everything else) calls
+  that abstraction and has no other platform-specific branches — the gap-detection/warning logic
+  in it is skipped automatically on native, since there's no "background tab" gap to close
+  there.
+- **Permissions/behavior**: the plugin's own Android manifest (merged in automatically by Gradle,
+  nothing to configure by hand) declares fine/coarse location, `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_LOCATION`, and `POST_NOTIFICATIONS`, and runs a foreground service while
+  tracking — Android *requires* a persistent, user-visible notification for a background location
+  service (shown as "Live location sharing active"), which is also honestly the right disclosure
+  for something acting as a safety record: the user always knows sharing is active, it can't run
+  invisibly. Running as a foreground service is also what avoids needing the separate, much more
+  sensitive `ACCESS_BACKGROUND_LOCATION` "Allow all the time" permission.
+- **Building/running it**: install deps in `client/`, then `npm run android:sync` (builds the web
+  app and copies it + syncs plugins into `client/android/`) any time the web source changes, then
+  open `client/android` in Android Studio (`npm run android:open`) to build/run on a device or
+  emulator like any normal Android project. This remote environment has no Android SDK, so actual
+  building/running has to happen on a machine with Android Studio installed.
+- **Not done yet**: app icons/splash screen still use Capacitor's defaults rather than
+  `logo.svg`/`logo-dark.svg`, no release signing/Play Store listing setup, and iOS isn't set up at
+  all (Capacitor supports it the same way, `npx cap add ios`, but requires a Mac + Xcode to build
+  — not attempted since only Android was asked for).
 
 ## Deploying (hosting) SpotShare
 

@@ -4,6 +4,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveShare } from "../hooks/useLiveShare";
 import { useToast } from "../hooks/useToast";
 import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
+import { isNativeApp } from "../utils/nativeGeolocation";
 
 export default function MyCurrentLocation() {
   const { status, error, share, coords, start, stop } = useLiveShare();
@@ -53,8 +54,9 @@ export default function MyCurrentLocation() {
     <div>
       <h1 className="page-title">📡 My Current Location</h1>
       <p className="text-muted mt-8" style={{ fontSize: 14 }}>
-        Share your live location with anyone — the link updates continuously as you move, for
-        as long as this tab stays open.
+        {isNativeApp
+          ? "Share your live location with anyone — the link updates continuously as you move, even while the app is in the background or your screen is off."
+          : "Share your live location with anyone — the link updates continuously as you move, for as long as this tab stays open and in the foreground."}
       </p>
 
       {!isSharing && (
@@ -62,8 +64,9 @@ export default function MyCurrentLocation() {
           <div style={{ fontSize: 36 }}>🔵</div>
           <h2 className="section-title mt-12">Not currently sharing</h2>
           <p className="text-muted mt-8" style={{ fontSize: 13.5 }}>
-            Starting live sharing will use your browser's real GPS location and keep sending
-            updates while this page (or app) stays open, until you stop it.
+            {isNativeApp
+              ? "Starting live sharing will use your device's real GPS location and keep sending updates in the background (shown as a persistent notification) until you stop it."
+              : "Starting live sharing will use your browser's real GPS location and keep sending updates while this page (or app) stays open, until you stop it."}
           </p>
           {error && (
             <p style={{ color: "var(--color-danger, #dc2626)", fontSize: 13, marginTop: 10 }}>{error}</p>
