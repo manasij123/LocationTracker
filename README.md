@@ -235,10 +235,17 @@ keeps working while the app is minimized or the screen is off, not just while it
     key's allowed referrers (Google Cloud Console → Credentials → that key) need `https://localhost/*`
     added too, or the map silently fails to load in the native app specifically while working fine
     on the web.
-- **Not done yet**: app icons/splash screen still use Capacitor's defaults rather than
-  `logo.svg`/`logo-dark.svg`, no release signing/Play Store listing setup, and iOS isn't set up at
-  all (Capacitor supports it the same way, `npx cap add ios`, but requires a Mac + Xcode to build
-  — not attempted since only Android was asked for).
+- **App icon**: `client/assets/` holds the source images `@capacitor/assets` (a dev-only CLI,
+  invoked via `npm run android:icons`) generates every density's launcher icon from — `icon-only.*`
+  (flat square icon, used pre-Android-8/as a fallback) and `icon-foreground.*` (the same artwork
+  minus its background, pre-scaled to roughly 66% and centered so it isn't clipped by an adaptive
+  icon's circular/squircle mask — Android's adaptive icon safe zone). The adaptive icon's
+  background is a plain solid white layer generated the same way. Re-run `npm run android:icons`
+  after replacing these source files to regenerate every `mipmap-*` density in
+  `client/android/app/src/main/res/`.
+- **Not done yet**: splash screen still uses Capacitor's default, no release signing/Play Store
+  listing setup, and iOS isn't set up at all (Capacitor supports it the same way, `npx cap add
+  ios`, but requires a Mac + Xcode to build — not attempted since only Android was asked for).
 
 ## Deploying (hosting) SpotShare
 
