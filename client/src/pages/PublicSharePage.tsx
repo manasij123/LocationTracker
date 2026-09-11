@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import MapView from "../components/MapView";
 import Skeleton from "../components/Skeleton";
+import BrandLogo from "../components/BrandLogo";
 import { getPublicShare, recordShareOpen } from "../services/shares";
 import { useCountdown } from "../hooks/useCountdown";
 import { useToast } from "../hooks/useToast";
@@ -74,7 +75,7 @@ export default function PublicSharePage() {
     <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
       <header style={{ padding: "18px 20px", textAlign: "center" }}>
         <div style={{ fontSize: 18, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          <img src="/logo.svg" alt="SpotShare" style={{ width: 24, height: 24 }} /> SpotShare
+          <BrandLogo style={{ width: 24, height: 24 }} /> SpotShare
         </div>
         <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>Shared Location</div>
       </header>

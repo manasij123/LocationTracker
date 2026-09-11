@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useTheme } from "../hooks/useTheme";
+import BrandLogo from "./BrandLogo";
 
 interface MoreDrawerProps {
   open: boolean;
@@ -15,7 +16,7 @@ export default function MoreDrawer({ open, onClose }: MoreDrawerProps) {
       <div className="drawer-overlay" onClick={onClose} />
       <div className="drawer-sheet">
         <div className="sidebar-brand">
-          <div className="brand-mark"><img src="/logo.svg" alt="SpotShare" /></div>
+          <div className="brand-mark"><BrandLogo /></div>
           <div>
             <div className="brand-name">SpotShare</div>
             <div className="brand-tagline">Location Sharing</div>

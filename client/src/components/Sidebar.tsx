@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import BrandLogo from "./BrandLogo";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: "🏠", end: true },
@@ -14,7 +15,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="brand-mark"><img src="/logo.svg" alt="SpotShare" /></div>
+        <div className="brand-mark"><BrandLogo /></div>
         <div>
           <div className="brand-name">SpotShare</div>
           <div className="brand-tagline">Location Sharing</div>
