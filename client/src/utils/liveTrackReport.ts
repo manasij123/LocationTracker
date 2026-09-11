@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getPublicOrigin } from "./publicOrigin";
 import type { Share, LiveTrackPoint } from "../types";
 
 // Matches the wait-point radius used while recording (useLiveShare.tsx) — used here only to
@@ -156,7 +157,7 @@ export function downloadLiveTrackReportPdf(share: Share) {
 
   doc.setTextColor(...COLOR_TEXT);
   let y = 36;
-  const shareUrl = `${window.location.origin}/share/${share.id}`;
+  const shareUrl = `${getPublicOrigin()}/share/${share.id}`;
 
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");

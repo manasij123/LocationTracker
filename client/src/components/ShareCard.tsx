@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import StatusBadge from "./StatusBadge";
 import { formatDateTime, formatTime } from "../utils/format";
 import { useToast } from "../hooks/useToast";
+import { getPublicOrigin } from "../utils/publicOrigin";
 import type { Share } from "../types";
 
 interface ShareCardProps {
@@ -13,7 +14,7 @@ interface ShareCardProps {
 export default function ShareCard({ share, onRevoke }: ShareCardProps) {
   const navigate = useNavigate();
   const { show } = useToast();
-  const shareUrl = `${window.location.origin}/share/${share.id}`;
+  const shareUrl = `${getPublicOrigin()}/share/${share.id}`;
 
   async function copyLink(e: MouseEvent) {
     e.stopPropagation();

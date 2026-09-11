@@ -13,6 +13,7 @@ import { useToast } from "../hooks/useToast";
 import { ApiRequestError } from "../services/api";
 import { formatClock, formatDateTime, formatRelativeTime } from "../utils/format";
 import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
+import { getPublicOrigin } from "../utils/publicOrigin";
 import type { ShareAnalytics } from "../types";
 
 export default function LocationDetails() {
@@ -66,7 +67,7 @@ export default function LocationDetails() {
   }
 
   const { share } = data;
-  const shareUrl = `${window.location.origin}/share/${share.id}`;
+  const shareUrl = `${getPublicOrigin()}/share/${share.id}`;
 
   return (
     <div>

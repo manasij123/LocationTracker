@@ -212,11 +212,29 @@ keeps working while the app is minimized or the screen is off, not just while it
   for something acting as a safety record: the user always knows sharing is active, it can't run
   invisibly. Running as a foreground service is also what avoids needing the separate, much more
   sensitive `ACCESS_BACKGROUND_LOCATION` "Allow all the time" permission.
-- **Building/running it**: install deps in `client/`, then `npm run android:sync` (builds the web
-  app and copies it + syncs plugins into `client/android/`) any time the web source changes, then
-  open `client/android` in Android Studio (`npm run android:open`) to build/run on a device or
-  emulator like any normal Android project. This remote environment has no Android SDK, so actual
-  building/running has to happen on a machine with Android Studio installed.
+- **Building/running it**: install deps in `client/`, create `client/.env` (see below), then `npm
+  run android:sync` (builds the web app and copies it + syncs plugins into `client/android/`) any
+  time the web source or `.env` changes, then open `client/android` in Android Studio (`npm run
+  android:open`) to build/run on a device or emulator like any normal Android project. This
+  remote environment has no Android SDK, so actual building/running has to happen on a machine
+  with Android Studio installed.
+- **`client/.env` needs two things the plain web deploy doesn't**, on top of the usual
+  `VITE_API_BASE_URL` and `VITE_GOOGLE_MAPS_API_KEY`:
+  - **`VITE_PUBLIC_APP_URL`** — the real, publicly-reachable web app URL (e.g. the Vercel
+    deployment, `https://your-app.vercel.app`). Every "Copy Link"/"Share"/generated report in the
+    app builds its shareable `/share/:token` URL from `window.location.origin` by default — fine
+    in a browser tab, since that already *is* the real URL, but inside the native app
+    `window.location.origin` is the WebView's own internal address (`https://localhost`), not a
+    URL anyone else could open. `client/src/utils/publicOrigin.ts` is what every share-link call
+    site actually calls; it returns `VITE_PUBLIC_APP_URL` when set (required for a working native
+    build) and falls back to `window.location.origin` otherwise (correct for the web build, where
+    this var is normally left unset).
+  - The native app's WebView origin (`https://localhost`) also needs allowing in two places that
+    otherwise only expect the real web domain: the backend's `CLIENT_ORIGIN` (CORS) needs
+    `https://localhost` added alongside the real frontend origin, and the Google Maps JS API
+    key's allowed referrers (Google Cloud Console → Credentials → that key) need `https://localhost/*`
+    added too, or the map silently fails to load in the native app specifically while working fine
+    on the web.
 - **Not done yet**: app icons/splash screen still use Capacitor's defaults rather than
   `logo.svg`/`logo-dark.svg`, no release signing/Play Store listing setup, and iOS isn't set up at
   all (Capacitor supports it the same way, `npx cap add ios`, but requires a Mac + Xcode to build

@@ -6,6 +6,7 @@ import { useToast } from "../hooks/useToast";
 import { formatClock, formatTime } from "../utils/format";
 import type { PublicShare } from "../types";
 import Skeleton from "../components/Skeleton";
+import { getPublicOrigin } from "../utils/publicOrigin";
 
 export default function ShareResult() {
   const { shareId } = useParams<{ shareId: string }>();
@@ -19,7 +20,7 @@ export default function ShareResult() {
   }, [shareId]);
 
   const remainingMs = useCountdown(share?.expiresAt);
-  const shareUrl = `${window.location.origin}/share/${shareId}`;
+  const shareUrl = `${getPublicOrigin()}/share/${shareId}`;
 
   async function copyLink() {
     try {

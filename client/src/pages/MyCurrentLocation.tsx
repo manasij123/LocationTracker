@@ -5,6 +5,7 @@ import { useLiveShare } from "../hooks/useLiveShare";
 import { useToast } from "../hooks/useToast";
 import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
 import { isNativeApp } from "../utils/nativeGeolocation";
+import { getPublicOrigin } from "../utils/publicOrigin";
 
 export default function MyCurrentLocation() {
   const { status, error, share, coords, start, stop } = useLiveShare();
@@ -12,7 +13,7 @@ export default function MyCurrentLocation() {
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   const [stopping, setStopping] = useState(false);
 
-  const shareUrl = share ? `${window.location.origin}/share/${share.id}` : null;
+  const shareUrl = share ? `${getPublicOrigin()}/share/${share.id}` : null;
 
   async function copyLink() {
     if (!shareUrl) return;
