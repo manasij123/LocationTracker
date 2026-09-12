@@ -598,22 +598,24 @@ h1, h2, h3, h4, p { margin: 0; }
    second. 0deg points up/north to match a compass heading with no rotation applied. */
 .heading-cone {
   position: absolute;
-  width: 92px; height: 92px;
+  width: 100px; height: 120px;
   left: 50%; top: 50%;
-  margin-left: -46px; margin-top: -46px;
-  transform-origin: 50% 50%;
+  margin-left: -50px; margin-top: -120px;
+  /* The box only extends outward (upward) from the dot, so it has to pivot around its own
+     bottom-center — where the dot actually is — not its geometric middle, or rotating it would
+     swing the whole beam away from the dot instead of sweeping it around a fixed point. */
+  transform-origin: 50% 100%;
   pointer-events: none;
   z-index: 1;
   display: none;
-  /* The color/fade-out itself is a plain radial glow (bright near the dot, gone by the edge) —
-     the direction comes entirely from the mask below, so there's no hard-edged wedge shape to
-     the glow itself, just where it's allowed to show through. */
-  background: radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.6) 0%, rgba(37, 99, 235, 0.35) 45%, rgba(37, 99, 235, 0) 78%);
-  /* A ~40deg solid core straight ahead (0deg = up, matching a compass heading with no rotation),
-     softly feathered by a further 35deg on each side rather than cut off sharply — so the beam's
-     edges blend into the surrounding glow instead of reading as a pizza-slice cutout. */
-  -webkit-mask-image: conic-gradient(from -55deg, transparent 0deg, black 35deg, black 75deg, transparent 110deg, transparent 360deg);
-  mask-image: conic-gradient(from -55deg, transparent 0deg, black 35deg, black 75deg, transparent 110deg, transparent 360deg);
+  /* A trapezoid, not a wedge converging to a point: its narrow (near) edge is exactly as wide as
+     the dot itself, flaring out to a much wider far edge — like a real flashlight beam widening
+     as it travels, not light escaping from an infinitely small point at the dot's center. */
+  -webkit-clip-path: polygon(38px 120px, 62px 120px, 96px 0, 4px 0);
+  clip-path: polygon(38px 120px, 62px 120px, 96px 0, 4px 0);
+  /* Solid right at the dot, fading to fully transparent by the far edge — the "blend" is this
+     forward fade, not a soft angular edge (the trapezoid's slanted sides stay crisp). */
+  background: linear-gradient(to top, rgba(37, 99, 235, 0.55) 0%, rgba(37, 99, 235, 0.26) 45%, rgba(37, 99, 235, 0) 100%);
 }
 @keyframes pulseRing {
   0% { transform: scale(0.4); opacity: 0.9; }
