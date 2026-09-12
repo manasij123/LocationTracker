@@ -180,6 +180,8 @@ Live-track points aren't kept forever, though: a scheduled server-side job
 outlive any real emergency's relevant window, without accumulating GPS history indefinitely. It
 only ever deletes old trail points, never the `Share` record itself.
 
+The Activity feed is purged the same way, on its own shorter schedule: `server/src/services/activityRetention.ts` (same runs-at-startup-then-every-24h pattern) deletes `ActivityEvent` rows older than `ACTIVITY_RETENTION_DAYS` (default 7 days) — it's just a rolling recent-activity log, not a safety record anything else depends on, so there's no reason to let it grow forever either.
+
 ## Android app (Capacitor)
 
 The web app's `client/` directory doubles as the source for a real Android app, wrapped with
@@ -290,6 +292,8 @@ better, which matters once the backend itself is on a free tier that sleeps
   - `DEMO_USER_EMAIL` / `DEMO_USER_NAME` — optional, cosmetic only
   - `LIVE_TRACK_RETENTION_DAYS` — optional, how long live-share GPS trails are
     kept before being purged (default `60`)
+  - `ACTIVITY_RETENTION_DAYS` — optional, how long Activity feed entries are
+    kept before being purged (default `7`)
 - After the first deploy, run the seed script once if you want demo data:
   `npx tsx prisma/seed.ts` (via the platform's shell/console).
 - Note your backend's public URL, e.g. `https://spotshare-api.onrender.com`.
