@@ -48,7 +48,7 @@ export default function Settings() {
 
         <SettingsSection title="About">
           <p className="text-muted" style={{ fontSize: 13.5 }}>SpotShare v1.0.0</p>
-          <p className="text-faint mt-8" style={{ fontSize: 12.5 }}>Temporary location sharing, done simply.</p>
+          <p className="text-faint mt-8" style={{ fontSize: 12.5 }}>Location sharing, Done simply.</p>
         </SettingsSection>
       </div>
     </div>
