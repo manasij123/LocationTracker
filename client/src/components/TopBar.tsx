@@ -1,20 +1,12 @@
-import { Menu } from "lucide-react";
 import BrandLogo from "./BrandLogo";
 
-interface TopBarProps {
-  onOpenMenu: () => void;
-}
-
-export default function TopBar({ onOpenMenu }: TopBarProps) {
+export default function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-brand">
         <div className="brand-mark"><BrandLogo /></div>
         SpotShare
       </div>
-      <button className="icon-btn" onClick={onOpenMenu} aria-label="Open menu">
-        <Menu size={20} />
-      </button>
     </header>
   );
 }

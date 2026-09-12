@@ -12,7 +12,7 @@ export default function AppShell() {
     <div className="app-shell">
       <Sidebar />
       <div className="app-main">
-        <TopBar onOpenMenu={() => setDrawerOpen(true)} />
+        <TopBar />
         <main className="app-content page-fade-in">
           <Outlet />
         </main>
