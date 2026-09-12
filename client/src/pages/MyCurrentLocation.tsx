@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Radio, Circle, Download } from "lucide-react";
 import MapView from "../components/MapView";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveShare } from "../hooks/useLiveShare";
 import { useToast } from "../hooks/useToast";
 import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
-import { isNativeApp } from "../utils/nativeGeolocation";
+import { getCurrentPositionOnce, isNativeApp, type GeoCoords } from "../utils/nativeGeolocation";
 import { getPublicOrigin } from "../utils/publicOrigin";
 
 export default function MyCurrentLocation() {
@@ -13,6 +13,29 @@ export default function MyCurrentLocation() {
   const { show } = useToast();
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [previewCoords, setPreviewCoords] = useState<GeoCoords | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const isSharing = status === "sharing" && !!share;
+
+  // Before the creator even taps "Share Realtime Location", show them a quick preview of where
+  // that would put them on the map — a plain one-shot fix, not the continuous watcher `start()`
+  // kicks off, so it costs nothing if they never press the button.
+  useEffect(() => {
+    if (isSharing) return;
+    let cancelled = false;
+    getCurrentPositionOnce()
+      .then((point) => {
+        if (!cancelled) setPreviewCoords(point);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewError("Couldn't get your current location for a preview.");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSharing]);
 
   const shareUrl = share ? `${getPublicOrigin()}/share/${share.id}` : null;
 
@@ -50,8 +73,6 @@ export default function MyCurrentLocation() {
     }
   }
 
-  const isSharing = status === "sharing" && !!share;
-
   return (
     <div>
       <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -65,9 +86,29 @@ export default function MyCurrentLocation() {
 
       {!isSharing && (
         <div className="card card-pad section" style={{ textAlign: "center" }}>
-          <div style={{ display: "flex", justifyContent: "center", color: "var(--color-primary)" }}>
-            <Circle size={36} fill="currentColor" />
-          </div>
+          {previewCoords ? (
+            <div style={{ margin: "-4px -4px 0", borderRadius: 12, overflow: "hidden" }}>
+              <MapView
+                latitude={previewCoords.latitude}
+                longitude={previewCoords.longitude}
+                placeName="Your current location"
+                height={200}
+                interactive={false}
+              />
+            </div>
+          ) : previewError ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "center", color: "var(--color-primary)" }}>
+                <Circle size={36} fill="currentColor" />
+              </div>
+              <p className="text-muted mt-8" style={{ fontSize: 13 }}>{previewError}</p>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "20px 0" }}>
+              <span className="spinner spinner-dark" />
+              <p className="text-muted" style={{ fontSize: 13 }}>Getting your current location…</p>
+            </div>
+          )}
           <h2 className="section-title mt-12">Not currently sharing</h2>
           <p className="text-muted mt-8" style={{ fontSize: 13.5 }}>
             {isNativeApp
