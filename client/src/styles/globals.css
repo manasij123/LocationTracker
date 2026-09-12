@@ -598,14 +598,22 @@ h1, h2, h3, h4, p { margin: 0; }
    second. 0deg points up/north to match a compass heading with no rotation applied. */
 .heading-cone {
   position: absolute;
-  width: 76px; height: 76px;
+  width: 92px; height: 92px;
   left: 50%; top: 50%;
-  margin-left: -38px; margin-top: -38px;
+  margin-left: -46px; margin-top: -46px;
   transform-origin: 50% 50%;
   pointer-events: none;
   z-index: 1;
   display: none;
-  background: conic-gradient(from -32deg, rgba(37, 99, 235, 0) 0deg, rgba(37, 99, 235, 0.45) 32deg, rgba(37, 99, 235, 0) 64deg, rgba(37, 99, 235, 0) 360deg);
+  /* The color/fade-out itself is a plain radial glow (bright near the dot, gone by the edge) —
+     the direction comes entirely from the mask below, so there's no hard-edged wedge shape to
+     the glow itself, just where it's allowed to show through. */
+  background: radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.6) 0%, rgba(37, 99, 235, 0.35) 45%, rgba(37, 99, 235, 0) 78%);
+  /* A ~40deg solid core straight ahead (0deg = up, matching a compass heading with no rotation),
+     softly feathered by a further 35deg on each side rather than cut off sharply — so the beam's
+     edges blend into the surrounding glow instead of reading as a pizza-slice cutout. */
+  -webkit-mask-image: conic-gradient(from -55deg, transparent 0deg, black 35deg, black 75deg, transparent 110deg, transparent 360deg);
+  mask-image: conic-gradient(from -55deg, transparent 0deg, black 35deg, black 75deg, transparent 110deg, transparent 360deg);
 }
 @keyframes pulseRing {
   0% { transform: scale(0.4); opacity: 0.9; }
