@@ -261,8 +261,13 @@ export async function downloadLiveTrackReportPdf(share: Share) {
         if (data.section === "body") {
           data.cell.styles.fillColor = COLOR_GRAY_BG;
           data.cell.styles.textColor = COLOR_TEXT;
-          if (data.column.index === 4) data.cell.text = [];
         }
+      },
+      // Runs after column widths are already computed from the cell text (so the "Map" column
+      // stays wide enough for "View Gap on Map"), but before the default text is drawn — clearing
+      // it here, rather than in didParseCell, avoids both a too-narrow column and doubled text.
+      willDrawCell: (data) => {
+        if (data.section === "body" && data.column.index === 4) data.cell.text = [];
       },
       didDrawCell: (data) => {
         if (data.section === "body" && data.column.index === 4) {
@@ -310,8 +315,10 @@ export async function downloadLiveTrackReportPdf(share: Share) {
         if (data.section === "body") {
           data.cell.styles.fillColor = COLOR_AMBER_BG;
           data.cell.styles.textColor = COLOR_AMBER_TEXT;
-          if (data.column.index === 5) data.cell.text = [];
         }
+      },
+      willDrawCell: (data) => {
+        if (data.section === "body" && data.column.index === 5) data.cell.text = [];
       },
       didDrawCell: (data) => {
         if (data.section === "body" && data.column.index === 5) {
@@ -355,13 +362,13 @@ export async function downloadLiveTrackReportPdf(share: Share) {
       "Open in Maps",
     ]),
     didParseCell: (data) => {
-      if (data.section === "body") {
-        if (points[data.row.index].waitPointLabel != null) {
-          data.cell.styles.fillColor = COLOR_AMBER_BG;
-          data.cell.styles.textColor = COLOR_AMBER_TEXT;
-        }
-        if (data.column.index === 5) data.cell.text = [];
+      if (data.section === "body" && points[data.row.index].waitPointLabel != null) {
+        data.cell.styles.fillColor = COLOR_AMBER_BG;
+        data.cell.styles.textColor = COLOR_AMBER_TEXT;
       }
+    },
+    willDrawCell: (data) => {
+      if (data.section === "body" && data.column.index === 5) data.cell.text = [];
     },
     didDrawCell: (data) => {
       if (data.section === "body" && data.column.index === 5) {
