@@ -608,6 +608,10 @@ h1, h2, h3, h4, p { margin: 0; }
   pointer-events: none;
   z-index: 1;
   display: none;
+  /* Softens the trapezoid's straight side edges into a feathered blend instead of a crisp
+     geometric line — applied to the clipped shape itself, so it blurs every edge (sides
+     included), not just the near/far fade already handled by the gradient below. */
+  filter: blur(12px);
   /* A trapezoid, not a wedge converging to a point: its narrow (near) edge is exactly as wide as
      the dot itself, flaring out to a much wider far edge — like a real flashlight beam widening
      as it travels, not light escaping from an infinitely small point at the dot's center. */
