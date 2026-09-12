@@ -37,44 +37,8 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// The exact glow shape from the design file: a blurred, gradient-filled crescent that curves in
-// behind the dot rather than converging to a point at its center. Traced in a 2180x2497 canvas
-// with the anchor circle centered at (1793.5, 1117) — HEADING_CONE_ANCHOR below is that circle's
-// position as a fraction of the canvas, used to align it with the real dot (whichever size it
-// renders at) and as the pivot point so rotating it by a compass heading sweeps it around the
-// dot instead of swinging the whole shape away from it.
-const HEADING_CONE_VIEWBOX_WIDTH = 2180;
-const HEADING_CONE_VIEWBOX_HEIGHT = 2497;
-const HEADING_CONE_ANCHOR_X = 1793.5 / HEADING_CONE_VIEWBOX_WIDTH;
-const HEADING_CONE_ANCHOR_Y = 1117 / HEADING_CONE_VIEWBOX_HEIGHT;
-const HEADING_CONE_WIDTH = 90;
-const HEADING_CONE_HEIGHT = Math.round(HEADING_CONE_WIDTH * (HEADING_CONE_VIEWBOX_HEIGHT / HEADING_CONE_VIEWBOX_WIDTH));
-// The traced shape's own "resting" orientation (0deg rotation, as drawn) points left, not up —
-// so a heading of 0 (north) needs this added on top of the compass rotation to actually point
-// up, matching every other 0deg-is-up convention in this file (updateHeading uses the same
-// offset for the same reason).
-const HEADING_CONE_ROTATION_OFFSET_DEG = 90;
-let headingConeIdCounter = 0;
-
-function buildHeadingConeSvg(): string {
-  const uid = headingConeIdCounter++;
-  const translate = `translate(${-HEADING_CONE_ANCHOR_X * 100}%, ${-HEADING_CONE_ANCHOR_Y * 100}%)`;
-  return `<svg class="heading-cone" width="${HEADING_CONE_WIDTH}" height="${HEADING_CONE_HEIGHT}" viewBox="0 0 ${HEADING_CONE_VIEWBOX_WIDTH} ${HEADING_CONE_VIEWBOX_HEIGHT}" style="position:absolute; left:${DOT_SIZE / 2}px; top:${DOT_SIZE / 2}px; overflow:visible; pointer-events:none; display:none; transform-origin:${HEADING_CONE_ANCHOR_X * 100}% ${HEADING_CONE_ANCHOR_Y * 100}%; transform:${translate} rotate(${HEADING_CONE_ROTATION_OFFSET_DEG}deg);" data-translate="${translate}">
-    <defs>
-      <filter id="headingConeBlur${uid}" x="-40%" y="-40%" width="180%" height="180%">
-        <feGaussianBlur stdDeviation="50" />
-      </filter>
-      <linearGradient id="headingConeGradient${uid}" x1="1793.5" y1="1143" x2="100.5" y2="1143" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#2563eb" stop-opacity="0.78" />
-        <stop offset="1" stop-color="#2563eb" stop-opacity="0.01" />
-      </linearGradient>
-    </defs>
-    <path d="M100 100L1920.5 761.5C1522.5 971.06 1509.5 1260.23 1920.5 1473L100 2396.5V100Z" fill="url(#headingConeGradient${uid})" fill-opacity="0.47" filter="url(#headingConeBlur${uid})" />
-  </svg>`;
-}
-
 function buildMarkerHtml(label?: string, withHeadingCone?: boolean): string {
-  const cone = withHeadingCone ? buildHeadingConeSvg() : "";
+  const cone = withHeadingCone ? `<div class="heading-cone"></div>` : "";
   const pulse = `<div class="pulse-marker" style="position:absolute; left:${-DOT_SIZE / 2}px; top:${-DOT_SIZE / 2}px;">${cone}<div class="ring"></div><div class="dot"></div></div>`;
   if (!label) return `<div style="position:relative;">${pulse}</div>`;
 
@@ -201,14 +165,13 @@ function getHtmlOverlayClass() {
       // innerHTML — a full setHtml() on every compass tick would also restart the dot's pulse
       // animation and thrash the DOM many times a second.
       updateHeading(heading: number | null) {
-        const cone = this.div?.querySelector<SVGElement & HTMLElement>(".heading-cone");
+        const cone = this.div?.querySelector<HTMLElement>(".heading-cone");
         if (!cone) return;
         if (heading == null) {
           cone.style.display = "none";
         } else {
           cone.style.display = "block";
-          const translate = cone.dataset.translate || "";
-          cone.style.transform = `${translate} rotate(${heading + HEADING_CONE_ROTATION_OFFSET_DEG}deg)`;
+          cone.style.transform = `rotate(${heading}deg)`;
         }
       }
     }
