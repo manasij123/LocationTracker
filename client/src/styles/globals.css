@@ -598,9 +598,9 @@ h1, h2, h3, h4, p { margin: 0; }
    second. 0deg points up/north to match a compass heading with no rotation applied. */
 .heading-cone {
   position: absolute;
-  width: 100px; height: 120px;
+  width: 90px; height: 78px;
   left: 50%; top: 50%;
-  margin-left: -50px; margin-top: -120px;
+  margin-left: -45px; margin-top: -78px;
   /* The box only extends outward (upward) from the dot, so it has to pivot around its own
      bottom-center — where the dot actually is — not its geometric middle, or rotating it would
      swing the whole beam away from the dot instead of sweeping it around a fixed point. */
@@ -611,12 +611,12 @@ h1, h2, h3, h4, p { margin: 0; }
   /* Softens the trapezoid's straight side edges into a feathered blend instead of a crisp
      geometric line — applied to the clipped shape itself, so it blurs every edge (sides
      included), not just the near/far fade already handled by the gradient below. */
-  filter: blur(12px);
+  filter: blur(10px);
   /* A trapezoid, not a wedge converging to a point: its narrow (near) edge is exactly as wide as
      the dot itself, flaring out to a much wider far edge — like a real flashlight beam widening
      as it travels, not light escaping from an infinitely small point at the dot's center. */
-  -webkit-clip-path: polygon(38px 120px, 62px 120px, 96px 0, 4px 0);
-  clip-path: polygon(38px 120px, 62px 120px, 96px 0, 4px 0);
+  -webkit-clip-path: polygon(33px 78px, 57px 78px, 86px 0, 4px 0);
+  clip-path: polygon(33px 78px, 57px 78px, 86px 0, 4px 0);
   /* Solid right at the dot, fading to fully transparent by the far edge — the "blend" is this
      forward fade, not a soft angular edge (the trapezoid's slanted sides stay crisp). */
   background: linear-gradient(to top, rgba(37, 99, 235, 0.55) 0%, rgba(37, 99, 235, 0.26) 45%, rgba(37, 99, 235, 0) 100%);
