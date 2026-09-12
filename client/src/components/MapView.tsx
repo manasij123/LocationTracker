@@ -37,8 +37,9 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function buildMarkerHtml(label?: string): string {
-  const pulse = `<div class="pulse-marker" style="position:absolute; left:${-DOT_SIZE / 2}px; top:${-DOT_SIZE / 2}px;"><div class="ring"></div><div class="dot"></div></div>`;
+function buildMarkerHtml(label?: string, withHeadingCone?: boolean): string {
+  const cone = withHeadingCone ? `<div class="heading-cone"></div>` : "";
+  const pulse = `<div class="pulse-marker" style="position:absolute; left:${-DOT_SIZE / 2}px; top:${-DOT_SIZE / 2}px;">${cone}<div class="ring"></div><div class="dot"></div></div>`;
   if (!label) return `<div style="position:relative;">${pulse}</div>`;
 
   const labelHtml = `<div class="marker-label" style="position:absolute; left:50%; top:-19px; transform: translate(-50%, -100%); white-space:nowrap;">${escapeHtml(label)}</div>`;
@@ -105,6 +106,7 @@ interface HtmlOverlayInstance {
   setMap(map: google.maps.Map | null): void;
   setPosition(position: google.maps.LatLngLiteral): void;
   setHtml(html: string): void;
+  updateHeading(heading: number | null): void;
 }
 
 // `google.maps.OverlayView` doesn't exist until the SDK script has finished loading, so this
@@ -158,6 +160,20 @@ function getHtmlOverlayClass() {
         this.html = html;
         if (this.div) this.div.innerHTML = html;
       }
+
+      // Rotates the heading-cone element in place, without touching the rest of the marker's
+      // innerHTML — a full setHtml() on every compass tick would also restart the dot's pulse
+      // animation and thrash the DOM many times a second.
+      updateHeading(heading: number | null) {
+        const cone = this.div?.querySelector<HTMLElement>(".heading-cone");
+        if (!cone) return;
+        if (heading == null) {
+          cone.style.display = "none";
+        } else {
+          cone.style.display = "block";
+          cone.style.transform = `rotate(${heading}deg)`;
+        }
+      }
     }
     HtmlOverlayClass = HtmlOverlay;
   }
@@ -204,6 +220,12 @@ interface MapViewProps {
    *  and slow for such short, frequent segments — the actual path is already drawn by
    *  `liveTrack` from the real GPS points). */
   isLiveTracking?: boolean;
+  /** Live compass heading in degrees (0 = north, clockwise) for a "my current location" marker
+   *  — rotates a Google-Maps-style beam under the dot to show which way the device is pointing.
+   *  Omit entirely for markers that aren't "this device's own position" (a place pick, a
+   *  recipient viewing someone else's shared location, etc.) — passing null still shows the dot
+   *  but hides the beam until a first reading arrives. */
+  heading?: number | null;
   /** Creator-supplied travel time (seconds) for the current/live transition — i.e. the move
    *  that just brought the share to (latitude, longitude) — overriding the auto-estimated
    *  Google Maps duration for that specific glide. */
@@ -227,6 +249,7 @@ export default function MapView({
   history = [],
   liveTrack = [],
   isLiveTracking = false,
+  heading,
   overrideDurationSeconds = null,
   overrideTravelMode = null,
   height = 320,
@@ -260,6 +283,8 @@ export default function MapView({
   const pendingResumeElapsedMsRef = useRef<number | null>(null);
   const liveTrackSegmentPolylinesRef = useRef<google.maps.Polyline[]>([]);
   const liveWaitPointMarkersRef = useRef<HtmlOverlayInstance[]>([]);
+  const headingRef = useRef(heading);
+  headingRef.current = heading;
 
   // Load the SDK and create the map once.
   useEffect(() => {
@@ -321,8 +346,9 @@ export default function MapView({
         });
 
         const Overlay = getHtmlOverlayClass();
-        const overlay = new Overlay(initialPosition, buildMarkerHtml(label));
+        const overlay = new Overlay(initialPosition, buildMarkerHtml(label, headingRef.current !== undefined));
         overlay.setMap(map);
+        overlay.updateHeading(headingRef.current ?? null);
 
         mapRef.current = map;
         circleRef.current = circle;
@@ -369,7 +395,8 @@ export default function MapView({
     const overlay = overlayRef.current;
     const circle = circleRef.current;
 
-    overlay.setHtml(buildMarkerHtml(label));
+    overlay.setHtml(buildMarkerHtml(label, headingRef.current !== undefined));
+    overlay.updateHeading(headingRef.current ?? null);
 
     const from = lastPositionRef.current;
     const to = { lat: latitude, lng: longitude };
@@ -552,6 +579,13 @@ export default function MapView({
       cancelled = true;
     };
   }, [latitude, longitude, label, zoom, ready, overrideDurationSeconds, overrideTravelMode, isLiveTracking]);
+
+  // Kept separate from the move effect above so a compass tick (many times a second) only ever
+  // rotates the existing beam element, never retriggers the glide/route-fetching logic there.
+  useEffect(() => {
+    if (!ready) return;
+    overlayRef.current?.updateHeading(heading ?? null);
+  }, [heading, ready]);
 
   // Render the share's past points (server-persisted, so this survives reloads) as numbered
   // pins, each consecutive pair connected by the same bold, road-following route the live

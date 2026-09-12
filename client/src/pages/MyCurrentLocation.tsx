@@ -4,6 +4,7 @@ import MapView from "../components/MapView";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveShare } from "../hooks/useLiveShare";
 import { useToast } from "../hooks/useToast";
+import { useDeviceHeading } from "../hooks/useDeviceHeading";
 import { downloadLiveTrackReportPdf } from "../utils/liveTrackReport";
 import { getCurrentPositionOnce, isNativeApp, type GeoCoords } from "../utils/nativeGeolocation";
 import { getPublicOrigin } from "../utils/publicOrigin";
@@ -17,6 +18,9 @@ export default function MyCurrentLocation() {
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const isSharing = status === "sharing" && !!share;
+  // This page is always showing "where am I right now", live or previewed — so the compass beam
+  // is relevant the whole time it's mounted, not just while a share is actually active.
+  const heading = useDeviceHeading(true);
 
   // Before the creator even taps "Share Realtime Location", show them a quick preview of where
   // that would put them on the map — a plain one-shot fix, not the continuous watcher `start()`
@@ -94,6 +98,7 @@ export default function MyCurrentLocation() {
                 placeName="Your current location"
                 height={200}
                 interactive={false}
+                heading={heading}
               />
             </div>
           ) : previewError ? (
@@ -140,6 +145,7 @@ export default function MyCurrentLocation() {
               isLiveTracking
               allowFullscreen
               height={340}
+              heading={heading}
             />
           </div>
 

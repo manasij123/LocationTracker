@@ -592,6 +592,21 @@ h1, h2, h3, h4, p { margin: 0; }
   background: rgba(37, 99, 235, 0.28);
   animation: pulseRing 2s ease-out infinite;
 }
+/* A Google-Maps-style directional beam under the dot, pointing whichever way the device is
+   facing — hidden by default (display:none) and shown/rotated directly via JS (MapView.tsx's
+   updateHeading) rather than React re-renders, since a compass reading can arrive many times a
+   second. 0deg points up/north to match a compass heading with no rotation applied. */
+.heading-cone {
+  position: absolute;
+  width: 76px; height: 76px;
+  left: 50%; top: 50%;
+  margin-left: -38px; margin-top: -38px;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+  z-index: 1;
+  display: none;
+  background: conic-gradient(from -32deg, rgba(37, 99, 235, 0) 0deg, rgba(37, 99, 235, 0.45) 32deg, rgba(37, 99, 235, 0) 64deg, rgba(37, 99, 235, 0) 360deg);
+}
 @keyframes pulseRing {
   0% { transform: scale(0.4); opacity: 0.9; }
   100% { transform: scale(1.6); opacity: 0; }
