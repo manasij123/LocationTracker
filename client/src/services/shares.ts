@@ -72,7 +72,9 @@ export function sendLivePing(
 }
 
 export function recordShareOpen(shareId: string) {
-  return api.post<{ recorded: boolean; status: string }>(`/shares/${shareId}/open`, {
-    userAgentCategory: navigator.userAgent,
-  });
+  // The server already derives the device category from the request's real User-Agent header
+  // (see classifyDevice() in sharesController.ts) — no need to send it, and doing so previously
+  // sent the full navigator.userAgent string, which routinely exceeds the 100-char limit the
+  // server validates against and made this call fail with a 400 on every single open.
+  return api.post<{ recorded: boolean; status: string }>(`/shares/${shareId}/open`, {});
 }
